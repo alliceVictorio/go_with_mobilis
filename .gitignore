@@ -179,3 +179,17 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Pastas de ambiente virtual Python
+backend/venv/
+backend/__pycache__/
+
+# Ficheiros temporários do Flutter/Dart
+frontend/.dart_tool/
+frontend/.packages
+frontend/build/
+
+# IDEs e Sistema
+.vscode/
+.idea/
+.DS_Store
