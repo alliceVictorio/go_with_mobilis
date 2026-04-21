@@ -1,0 +1,123 @@
+stop_id,stop_name,stop_lat,stop_lon
+S01,Lg. José Lúcio (Terminal),39.7461,-8.8091
+S02,Av. Heróis de Angola,39.7453,-8.8049
+S03,Av. Cidade de Maringá / Mercado Municipal,39.7494,-8.806
+S04,Arrabal da Ponte,39.7487,-8.8068
+S05,Nova Leiria,39.7523,-8.8078
+S06,Almoínha Grande,39.7548,-8.8101
+S07,Bairro das Almoínhas,39.757,-8.8135
+S08,Estrada da Estação,39.7615,-8.8172
+S09,Rua João de Deus,39.764,-8.8205
+S10,Rua da Pilada,39.7635,-8.8235
+S11,Estrada da Figueira da Foz,39.7648,-8.827
+S12,Esc. Afonso Lopes Vieira,39.7656,-8.8285
+S13,Travessa da Maligueira,39.7663,-8.831
+S14,Rotunda R. Dom Carlos I,39.767,-8.8335
+S15,Rua Dom Carlos I,39.7678,-8.835
+S16,Leiria (Estação),39.7687,-8.8383
+S17,Estrada da Estação (Regresso),39.7675,-8.836
+S18,Bairro das Almoínhas (Regresso),39.7565,-8.813
+S19,Estádio Magalhães Pessoa,39.7485,-8.812
+S20,Piscinas Municipais,39.75,-8.8086
+S21,Av. 25 De Abril,39.745,-8.8105
+S22,Av. Papa Francisco,39.7431,-8.8118
+S23,Bairro dos Capuchos,39.7395,-8.8145
+S24,Câmara Municipal (ESEL),39.741,-8.8103
+S25,Esc. Francisco Rodrigues Lobo,39.738,-8.8125
+S26,Rua Qta. Do Seminário Centro Comercial,39.7355,-8.814
+S27,Campus 2 IPL,39.7335,-8.821
+S28,Rotunda Alto do Vieiro,39.735,-8.815
+S29,Escola José Saraiva,39.739,-8.801
+S30,Rua da Malaposta,39.7375,-8.8035
+S31,Prisão Escola,39.736,-8.805
+S32,Centro De Saúde Gorjão Henriques,39.7345,-8.8065
+S33,Bairro dos Sargentos,39.7385,-8.799
+S34,Av. Marquês de Pombal,39.7415,-8.7995
+S35,Av. General Humberto Delgado 1,39.744,-8.8015
+S36,Av. General Humberto Delgado 2,39.7455,-8.8025
+S37,Guimarota,39.747,-8.7985
+S38,Escola Profissional (ISLA),39.7485,-8.796
+S39,São Romão - Rua Florentino Pedro Lopes,39.7505,-8.794
+S40,São Romão / Rua da Fonte,39.753,-8.7925
+S41,São Romão Rua Esperança CETL,39.7555,-8.7915
+S42,Hospital (Visitas),39.7435,-8.795
+S43,Hospital (Consultas Externas),39.7445,-8.794
+S44,Escola Correia Mateus,39.742,-8.7915
+S45,Hospital Santo André,39.7435,-8.793
+S46,Rua de Santo André,39.745,-8.7965
+S47,Rua das Olhalvas,39.7475,-8.798
+S48,Bombeiros Municipais,39.7495,-8.802
+S49,Ponte Hintze Ribeiro,39.7475,-8.8055
+S50,Jardim Luís de Camões,39.7455,-8.8075
+S51,Lg. José Lúcio (Término),39.7461,-8.8091
+S2_01,Lg. José Lúcio (Terminal),39.7461,-8.8091
+S2_02,Av. Cidade de Maringá / Mercado Municipal,39.7494,-8.806
+S2_03,Rua Capitão Mouzinho De Albuquerque,39.747,-8.8055
+S2_04,Largo Cónego Maia / Sé,39.7456,-8.8066
+S2_05,Fonte das 3 Bicas,39.7445,-8.8075
+S2_06,Ponte Hintze Ribeiro,39.7475,-8.8055
+S2_07,Bombeiros Municipais,39.7495,-8.802
+S2_08,Hospital (Visitas),39.7435,-8.795
+S2_09,Hospital (Consultas Externas),39.7445,-8.794
+S2_10,Escola Correia Mateus,39.742,-8.7915
+S2_11,Hospital Santo André,39.7435,-8.793
+S2_12,São Romão Rua Esperança CETL,39.7555,-8.7915
+S2_13,São Romão / Rua da Fonte,39.753,-8.7925
+S2_14,São Romão Rua Cor. Pereira Pascoal,39.7515,-8.7945
+S2_15,Guimarota,39.747,-8.7985
+S2_16,Av. N. S. Fátima,39.745,-8.799
+S2_17,Av. N. S. Fátima / Sr. da Encarnação,39.7435,-8.8005
+S2_18,Av. Marquês de Pombal,39.7415,-8.7995
+S2_19,Bairro dos Sargentos,39.7385,-8.799
+S2_20,Centro De Saúde Gorjão Henriques,39.7345,-8.8065
+S2_21,Rua Qta. Do Seminário Centro Comercial,39.7355,-8.814
+S2_22,Campus 2 IPL,39.7335,-8.821
+S2_23,Rotunda Alto do Vieiro,39.735,-8.815
+S2_24,Esc. Francisco Rodrigues Lobo,39.738,-8.8125
+S2_25,Câmara Municipal (ESEL),39.741,-8.8103
+S2_26,Rua Cidade de Tokushima,39.7375,-8.816
+S2_27,Bairro dos Capuchos,39.7395,-8.8145
+S2_28,Esc. Domingos Sequeira,39.7415,-8.8135
+S2_29,Av. 25 De Abril,39.745,-8.8105
+S2_30,Av. 25 de Abril / Castelo de Leiria,39.7435,-8.812
+S2_31,Piscinas Municipais,39.75,-8.8086
+S2_32,Estádio Magalhães Pessoa,39.7485,-8.812
+S2_33,Bairro das Almoínhas,39.757,-8.8135
+S2_34,Estrada da Estação,39.7615,-8.8172
+S2_35,Rua João de Deus,39.764,-8.8205
+S2_36,Rua da Pilada,39.7635,-8.8235
+S2_37,Estrada da Figueira da Foz,39.7648,-8.827
+S2_38,Esc. Afonso Lopes Vieira,39.7656,-8.8285
+S2_39,Travessa da Maligueira,39.7663,-8.831
+S2_40,Rotunda R. Dom Carlos I,39.767,-8.8335
+S2_41,Rua Dom Carlos I,39.7678,-8.835
+S2_42,Leiria (Estação),39.7687,-8.8383
+S2_43,Estrada da Estação (Regresso),39.7675,-8.836
+S2_44,Bairro das Almoínhas (Regresso),39.7565,-8.813
+S2_45,Almoínha Grande,39.7548,-8.8101
+S2_46,Nova Leiria,39.7523,-8.8078
+S2_47,Arrabal da Ponte,39.7487,-8.8068
+S2_48,Rua Capitão Mouzinho De Albuquerque (Término),39.747,-8.8055
+S2_49,Largo Cónego Maia / Sé (Término),39.7456,-8.8066
+S2_50,Lg. José Lúcio (Término),39.7461,-8.8091
+S9_01,Lg. José Lúcio (Terminal),39.7461,-8.8091
+S9_02,Av. Cidade de Maringá / Mercado Municipal,39.7494,-8.8060
+S9_03,Rua Capitão Mouzinho De Albuquerque,39.7470,-8.8055
+S9_04,Largo Cónego Maia / Sé,39.7456,-8.8066
+S9_05,Mercado Sant'ana,39.7448,-8.8073
+S9_06,Largo Da República,39.7437,-8.8037
+S9_07,Av. Marquês de Pombal,39.7415,-8.7995
+S9_08,Av. General Humberto Delgado 1,39.7440,-8.8015
+S9_09,Av. General Humberto Delgado 2,39.7455,-8.8025
+S9_10,Rua Qta. Do Seminário Centro Comercial,39.7355,-8.8140
+S9_11,Campus 2 IPL,39.7335,-8.8210
+S9_12,Rotunda Alto do Vieiro,39.7350,-8.8150
+S9_13,Esc. Francisco Rodrigues Lobo,39.7380,-8.8125
+S9_14,Câmara Municipal (ESEL),39.7410,-8.8103
+S9_15,Bairro dos Capuchos,39.7395,-8.8145
+S9_16,Esc. Domingos Sequeira,39.7415,-8.8135
+S9_17,Av. 25 De Abril,39.7450,-8.8105
+S9_18,Av. 25 de Abril / Castelo de Leiria,39.7435,-8.8120
+S9_19,Rua Capitão Mouzinho De Albuquerque (Regresso),39.7470,-8.8055
+S9_20,Largo Cónego Maia / Sé (Regresso),39.7456,-8.8066
+S9_21,Lg. José Lúcio (Término),39.7461,-8.8091

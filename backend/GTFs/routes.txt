@@ -1,0 +1,4 @@
+route_id,route_short_name,route_long_name,route_type,route_color,route_text_color
+R1,1,Circular Urbana - Sentido Estação,3,FF0000,FFFFFF
+R2,2,Circular Urbana - Sentido Hospital,3,FFCC00,000000
+R9,9,Circular Urbana - Centro Histórico / IPL,3,0000FF,FFFFFF
