@@ -110,8 +110,18 @@ class NavigationStop(BaseModel):
 
 class RoutePlanResponse(BaseModel):
     route_id: str
+    route_name: str
+    route_color: str
     trip_id: str
     arrival_time: str
     boarding_stop: NavigationStop
     alighting_stop: NavigationStop
+    intermediate_stops: List[NavigationStop]
     shape_coordinates: List[Coordinate]
+
+class UpcomingBusResponse(BaseModel):
+    route_id: str
+    route_name: str
+    route_color: str
+    arrival_time: str
+    wait_time_mins: int
