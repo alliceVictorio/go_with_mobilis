@@ -3,18 +3,15 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'package:latlong2/latlong.dart';
+import 'dart:io' show Platform;
 
 class ApiService {
   static const _storage = FlutterSecureStorage();
 
-  // Use 10.0.2.2 for Android Emulator, 127.0.0.1 for iOS Simulator/Web
+  // Usa o IP da rede local do computador para funcionar tanto no PC, como emuladores e telemóveis físicos
   static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://127.0.0.1:8000';
-    } else {
-      // Basic approach: android defaults to 10.0.2.2 for local host
-      return 'http://10.0.2.2:8000';
-    }
+    // 172.22.196.232 é o IP local atual da máquina de desenvolvimento (Dados Móveis)
+    return 'http://127.0.0.1:8000';
   }
 
   static Future<Map<String, dynamic>> register(String firstName, String lastName, String email, String password, String? phoneNumber, String? profilePicture) async {
@@ -339,4 +336,224 @@ class ApiService {
       return false;
     }
   }
+
+  // --- ADMIN API ---
+  static Future<List<dynamic>> getAdminUsers() async {
+    final url = Uri.parse('$baseUrl/admin/users');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao obter utilizadores: $e');
+    }
+    return [];
+  }
+
+  static Future<bool> updateAdminUser(int userId, Map<String, dynamic> data) async {
+    final url = Uri.parse('$baseUrl/admin/users/$userId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao atualizar utilizador: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteAdminUser(int userId) async {
+    final url = Uri.parse('$baseUrl/admin/users/$userId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.delete(url, headers: {'Authorization': 'Bearer $token'});
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao eliminar utilizador: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> createRoute(Map<String, dynamic> routeData) async {
+    final url = Uri.parse('$baseUrl/admin/routes');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(routeData),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao criar linha: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateRoute(String routeId, Map<String, dynamic> routeData) async {
+    final url = Uri.parse('$baseUrl/admin/routes/$routeId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(routeData),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao atualizar linha: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteRoute(String routeId) async {
+    final url = Uri.parse('$baseUrl/admin/routes/$routeId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao apagar linha: $e');
+      return false;
+    }
+  }
+
+  static Future<List<dynamic>> getAdminStops() async {
+    final url = Uri.parse('$baseUrl/admin/stops');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao listar paragens admin: $e');
+    }
+    return [];
+  }
+
+  static Future<bool> createStopAdmin(Map<String, dynamic> stopData) async {
+    final url = Uri.parse('$baseUrl/admin/stops');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(stopData),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao criar paragem: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateStopAdmin(String stopId, Map<String, dynamic> stopData) async {
+    final url = Uri.parse('$baseUrl/admin/stops/$stopId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(stopData),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao atualizar paragem: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteStopAdmin(String stopId) async {
+    final url = Uri.parse('$baseUrl/admin/stops/$stopId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao apagar paragem: $e');
+      return false;
+    }
+  }
+
+  static Future<List<dynamic>> getAdminSchedules() async {
+    final url = Uri.parse('$baseUrl/admin/schedules');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao listar horários: $e');
+    }
+    return [];
+  }
+
+  static Future<bool> createSchedule(Map<String, dynamic> data) async {
+    final url = Uri.parse('$baseUrl/admin/schedules');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao criar horário: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteSchedule(String tripId) async {
+    final url = Uri.parse('$baseUrl/admin/schedules/$tripId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao apagar horário: $e');
+      return false;
+    }
+  }
+
+  static Future<List<dynamic>> getAdminShapes() async {
+    final url = Uri.parse('$baseUrl/admin/shapes');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao listar percursos: $e');
+    }
+    return [];
+  }
 }
+

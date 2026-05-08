@@ -9,6 +9,7 @@ class Stop(Base):
     name = Column(String)
     # Define o ponto geográfico (Latitude e Longitude) 
     geom = Column(Geometry(geometry_type='POINT', srid=4326))
+    is_active = Column(Boolean, default=True)
 
 class Route(Base):
     __tablename__ = "routes"

@@ -28,6 +28,8 @@ app.add_middleware(
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # --- ROTAS ---
+from admin_api import admin_router
+app.include_router(admin_router)
 
 @app.get("/")
 def home():
@@ -35,6 +37,7 @@ def home():
 
 @app.post("/register", response_model=schemas.UserResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    print(f"DEBUG REGISTER: email={user.email}, pwd_len={len(user.password)}, pwd={user.password[:10]}")
     # Verificar se o email já existe [cite: 20, 58]
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
