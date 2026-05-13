@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import '../services/api_service.dart';
@@ -26,7 +25,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   
-  XFile? _profileImage;
   Uint8List? _profileImageBytes;
   final ImagePicker _picker = ImagePicker();
 
@@ -41,7 +39,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (pickedFile != null) {
         final bytes = await pickedFile.readAsBytes();
         setState(() {
-          _profileImage = pickedFile;
           _profileImageBytes = bytes;
         });
       }

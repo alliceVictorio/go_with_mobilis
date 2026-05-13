@@ -246,6 +246,27 @@ def get_stop_upcoming_buses(stop_id: str, db: Session = Depends(database.get_db)
     upcoming.sort(key=lambda x: x.wait_time_mins)
     return upcoming
 
+@app.get("/stops/{stop_id}/routes", response_model=List[schemas.RouteResponse])
+def get_stop_routes(stop_id: str, db: Session = Depends(database.get_db)):
+    target_stop = db.query(models.Stop).filter(models.Stop.id == stop_id).first()
+    if not target_stop:
+        return []
+
+    routes = db.query(models.Route)\
+               .join(models.Trip, models.Trip.route_id == models.Route.id)\
+               .join(models.StopTime, models.StopTime.trip_id == models.Trip.id)\
+               .join(models.Stop, models.Stop.id == models.StopTime.stop_id)\
+               .filter(models.Stop.name == target_stop.name)\
+               .distinct().all()
+    
+    # Optional: order by short_name as integer if possible
+    try:
+        routes.sort(key=lambda r: int(r.short_name) if r.short_name and r.short_name.isdigit() else 999)
+    except:
+        pass
+        
+    return routes
+
 @app.post("/stops", response_model=schemas.StopResponse)
 def create_stop(
     stop: schemas.StopCreate, 
@@ -397,7 +418,48 @@ def add_favorite(
     db.refresh(db_fav)
     return db_fav
 
-@app.get("/navigate", response_model=schemas.RoutePlanResponse, summary="Obter Rota de Navegação")
+@app.get("/favorites", response_model=List[schemas.StopResponse])
+def get_favorites(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    favorites = db.query(models.Favorite).filter(models.Favorite.user_id == current_user.id).all()
+    stop_ids = [fav.stop_id for fav in favorites]
+    if not stop_ids:
+        return []
+    stops_query = db.query(
+        models.Stop.id,
+        models.Stop.name,
+        func.ST_Y(models.Stop.geom).label('lat'),
+        func.ST_X(models.Stop.geom).label('lon')
+    ).filter(models.Stop.id.in_(stop_ids)).all()
+    
+    return [
+        schemas.StopResponse(
+            id=str(stop.id),
+            name=stop.name,
+            lat=stop.lat,
+            lon=stop.lon
+        ) for stop in stops_query
+    ]
+
+@app.delete("/favorites/{stop_id}")
+def remove_favorite(
+    stop_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    fav = db.query(models.Favorite).filter(
+        models.Favorite.stop_id == stop_id,
+        models.Favorite.user_id == current_user.id
+    ).first()
+    if fav:
+        db.delete(fav)
+        db.commit()
+        return {"status": "success"}
+    raise HTTPException(status_code=404, detail="Favorite not found")
+
+@app.get("/navigate", response_model=List[schemas.RoutePlanResponse], summary="Obter Rota de Navegação")
 def get_navigation_route(
     from_lat: float = Query(..., description="Latitude de origem"),
     from_lon: float = Query(..., description="Longitude de origem"),
@@ -433,19 +495,30 @@ def get_navigation_route(
     to_pt = WKTElement(f'POINT({to_lon} {to_lat})', srid=4326)
 
     # 1. Obter paragens num raio (por exemplo as 5 mais próximas)
-    origin_stops = db.query(models.Stop.id, func.ST_Y(models.Stop.geom).label('lat'), func.ST_X(models.Stop.geom).label('lon'), models.Stop.name).order_by(
-        func.ST_Distance(func.cast(models.Stop.geom, Geography), func.cast(from_pt, Geography))
-    ).limit(5).all()
+    origin_stops = db.query(
+        models.Stop.id, 
+        func.ST_Y(models.Stop.geom).label('lat'), 
+        func.ST_X(models.Stop.geom).label('lon'), 
+        models.Stop.name,
+        func.ST_Distance(func.cast(models.Stop.geom, Geography), func.cast(from_pt, Geography)).label('dist')
+    ).order_by('dist').limit(5).all()
     
-    dest_stops = db.query(models.Stop.id, func.ST_Y(models.Stop.geom).label('lat'), func.ST_X(models.Stop.geom).label('lon'), models.Stop.name).order_by(
-        func.ST_Distance(func.cast(models.Stop.geom, Geography), func.cast(to_pt, Geography))
-    ).limit(5).all()
+    dest_stops = db.query(
+        models.Stop.id, 
+        func.ST_Y(models.Stop.geom).label('lat'), 
+        func.ST_X(models.Stop.geom).label('lon'), 
+        models.Stop.name,
+        func.ST_Distance(func.cast(models.Stop.geom, Geography), func.cast(to_pt, Geography)).label('dist')
+    ).order_by('dist').limit(5).all()
 
     if not origin_stops or not dest_stops:
         raise HTTPException(status_code=404, detail="Não existem paragens nas proximidades.")
         
     origin_ids = [s.id for s in origin_stops]
     dest_ids = [s.id for s in dest_stops]
+    
+    origin_dist_map = {s.id: s.dist for s in origin_stops}
+    dest_dist_map = {s.id: s.dist for s in dest_stops}
 
     st1 = aliased(models.StopTime)
     st2 = aliased(models.StopTime)
@@ -455,7 +528,7 @@ def get_navigation_route(
     day_column = getattr(cal_alias, current_day_col)
 
     # 2. Procurar viagens que passem na origem e depois no destino, join com Calendar
-    valid_trips = db.query(st1.trip_id, st1.stop_id.label('o_stop'), st2.stop_id.label('d_stop'), st1.arrival_time) \
+    valid_trips = db.query(st1.trip_id, st1.stop_id.label('o_stop'), st2.stop_id.label('d_stop'), st1.arrival_time, st2.arrival_time.label('alighting_time')) \
         .join(st2, st1.trip_id == st2.trip_id) \
         .join(trip_alias, trip_alias.id == st1.trip_id) \
         .join(cal_alias, cal_alias.service_id == trip_alias.service_id) \
@@ -477,20 +550,25 @@ def get_navigation_route(
 
     search_td = parse_time(search_time_str)
     
-    best_trip = None
-    best_time_diff = float('inf')
-    best_arrival_time_str = None
+    all_options = []
     
     for vt in valid_trips:
         base_arr_td = parse_time(vt.arrival_time)
+        base_alight_td = parse_time(vt.alighting_time)
+        ride_time_secs = (base_alight_td - base_arr_td).total_seconds()
+        if ride_time_secs < 0: ride_time_secs += 24*3600 # Handle midnight crossing
+        
+        walk_time_secs = (origin_dist_map[vt.o_stop] / 1.4) + (dest_dist_map[vt.d_stop] / 1.4)
+        
+        trip_db = db.query(models.Trip).filter(models.Trip.id == vt.trip_id).first()
+        if not trip_db: continue
+        route_id = trip_db.route_id
         
         # 1. Verifica tempo base da trip
         if base_arr_td >= search_td:
-            diff = (base_arr_td - search_td).total_seconds()
-            if diff < best_time_diff:
-                best_time_diff = diff
-                best_trip = vt
-                best_arrival_time_str = vt.arrival_time
+            wait_time_secs = (base_arr_td - search_td).total_seconds()
+            score = wait_time_secs + ride_time_secs + walk_time_secs
+            all_options.append((vt, score, vt.arrival_time, route_id))
                 
         # 2. Verifica a tabela de Frequências (se este autocarro for repetido)
         freqs = db.query(models.Frequency).filter(models.Frequency.trip_id == vt.trip_id).all()
@@ -504,88 +582,128 @@ def get_navigation_route(
             headway = f.headway_secs
             curr_td = base_arr_td
             
+            matches = 0
             # Adicionar frequência enquanto não superar o limite final
             while curr_td <= f_end_td:
                 curr_td += timedelta(seconds=headway)
                 if curr_td >= search_td and curr_td <= f_end_td:
-                    diff = (curr_td - search_td).total_seconds()
-                    if diff < best_time_diff:
-                        best_time_diff = diff
-                        best_trip = vt
-                        h, r = divmod(curr_td.total_seconds(), 3600)
-                        m, s = divmod(r, 60)
-                        best_arrival_time_str = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
-                    break
+                    wait_time_secs = (curr_td - search_td).total_seconds()
+                    score = wait_time_secs + ride_time_secs + walk_time_secs
+                    h, r = divmod(curr_td.total_seconds(), 3600)
+                    m, s = divmod(r, 60)
+                    curr_arr = f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
+                    all_options.append((vt, score, curr_arr, route_id))
+                    matches += 1
+                    if matches >= 3:
+                        break # we only need max 3 upcoming options per frequency
                     
-    if not best_trip:
+    if not all_options:
          raise HTTPException(
             status_code=404, 
             detail=f"Não foram encontradas viagens. Procura a partir de: {search_time_str} (os autocarros já podem ter terminado o serviço por hoje)."
         )
 
-    trip_id, o_stop_id, d_stop_id, _ = best_trip
-    arrival_time = best_arrival_time_str
+    all_options.sort(key=lambda x: x[1])
     
-    trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
-    route = db.query(models.Route).filter(models.Route.id == trip.route_id).first()
+    unique_options = []
+    seen = set()
+    for opt in all_options:
+        vt, score, arr_time, route_id = opt
+        identifier = (route_id, arr_time)
+        if identifier not in seen:
+            seen.add(identifier)
+            unique_options.append((vt, score, arr_time))
+            if len(unique_options) == 3:
+                break
+                
+    sorted_options = unique_options
     
-    route_name = "Linha"
-    route_color = "0054A6"
-    if route:
-        route_name = f"Linha {route.short_name}" if route.short_name else (route.long_name or "Linha")
-        route_color = route.color if route.color else "0054A6"
-        if not route_color.startswith("#"):
-            route_color = f"#{route_color}"
+    responses = []
     
-    o_stop = next(s for s in origin_stops if s.id == o_stop_id)
-    d_stop = next(s for s in dest_stops if s.id == d_stop_id)
-    
-    st_origin = db.query(models.StopTime.stop_sequence).filter(models.StopTime.trip_id == trip_id, models.StopTime.stop_id == o_stop_id).first()
-    st_dest = db.query(models.StopTime.stop_sequence).filter(models.StopTime.trip_id == trip_id, models.StopTime.stop_id == d_stop_id, models.StopTime.stop_sequence > st_origin.stop_sequence).first()
+    for best_trip, best_time_diff, best_arrival_time_str in sorted_options:
+        trip_id, o_stop_id, d_stop_id, _, _ = best_trip
+        arrival_time = best_arrival_time_str
+        
+        trip = db.query(models.Trip).filter(models.Trip.id == trip_id).first()
+        route = db.query(models.Route).filter(models.Route.id == trip.route_id).first()
+        
+        route_name = "Linha"
+        route_color = "0054A6"
+        if route:
+            route_name = f"Linha {route.short_name}" if route.short_name else (route.long_name or "Linha")
+            if str(route.short_name).strip() == "1":
+                route_color = "#1E8449" # Verde para Linha 1
+            else:
+                route_color = route.color if route.color else "0054A6"
+                if not route_color.startswith("#"):
+                    route_color = f"#{route_color}"
+        
+        o_stop = next(s for s in origin_stops if s.id == o_stop_id)
+        d_stop = next(s for s in dest_stops if s.id == d_stop_id)
+        
+        st_origin = db.query(models.StopTime.stop_sequence).filter(models.StopTime.trip_id == trip_id, models.StopTime.stop_id == o_stop_id).first()
+        st_dest = db.query(models.StopTime.stop_sequence).filter(models.StopTime.trip_id == trip_id, models.StopTime.stop_id == d_stop_id, models.StopTime.stop_sequence > st_origin.stop_sequence).first()
 
-    intermediate_db = db.query(
-        models.Stop.id, 
-        models.Stop.name,
-        func.ST_Y(models.Stop.geom).label('lat'),
-        func.ST_X(models.Stop.geom).label('lon')
-    ).join(models.StopTime, models.StopTime.stop_id == models.Stop.id)\
-     .filter(models.StopTime.trip_id == trip_id)\
-     .filter(models.StopTime.stop_sequence > st_origin.stop_sequence)\
-     .filter(models.StopTime.stop_sequence < st_dest.stop_sequence)\
-     .order_by(models.StopTime.stop_sequence).all()
+        intermediate_db = db.query(
+            models.Stop.id, 
+            models.Stop.name,
+            func.ST_Y(models.Stop.geom).label('lat'),
+            func.ST_X(models.Stop.geom).label('lon')
+        ).join(models.StopTime, models.StopTime.stop_id == models.Stop.id)\
+         .filter(models.StopTime.trip_id == trip_id)\
+         .filter(models.StopTime.stop_sequence > st_origin.stop_sequence)\
+         .filter(models.StopTime.stop_sequence < st_dest.stop_sequence)\
+         .order_by(models.StopTime.stop_sequence).all()
 
-    intermediate_stops = [
-        {"id": s.id, "name": s.name, "lat": s.lat, "lon": s.lon} for s in intermediate_db
-    ]
-    
-    # Obter Shape Coordinates
-    shape_raw = db.query(func.ST_AsText(models.Shape.geom)).filter(models.Shape.shape_id == trip.shape_id).scalar()
-    
-    points = []
-    if shape_raw:
-        clean_str = shape_raw.replace("LINESTRING(", "").replace(")", "")
-        for pt in clean_str.split(","):
-            l_lon, l_lat = pt.strip().split(" ")
-            points.append({"lat": float(l_lat), "lon": float(l_lon)})
+        intermediate_stops = [
+            {"id": s.id, "name": s.name, "lat": s.lat, "lon": s.lon} for s in intermediate_db
+        ]
+        
+        # Obter Shape Coordinates
+        shape_raw = db.query(func.ST_AsText(models.Shape.geom)).filter(models.Shape.shape_id == trip.shape_id).scalar()
+        
+        points = []
+        if shape_raw:
+            clean_str = shape_raw.replace("LINESTRING(", "").replace(")", "")
+            for pt in clean_str.split(","):
+                l_lon, l_lat = pt.strip().split(" ")
+                points.append({"lat": float(l_lat), "lon": float(l_lon)})
 
-    return {
-        "route_id": trip.route_id,
-        "route_name": route_name,
-        "route_color": route_color,
-        "trip_id": trip_id,
-        "arrival_time": arrival_time,
-        "boarding_stop": {
-            "id": o_stop.id,
-            "name": o_stop.name,
-            "lat": o_stop.lat,
-            "lon": o_stop.lon
-        },
-        "alighting_stop": {
-            "id": d_stop.id,
-            "name": d_stop.name,
-            "lat": d_stop.lat,
-            "lon": d_stop.lon
-        },
-        "intermediate_stops": intermediate_stops,
-        "shape_coordinates": points
-    }
+        if points:
+            def dist(p1, p2):
+                return (p1['lat'] - p2['lat'])**2 + (p1['lon'] - p2['lon'])**2
+                
+            o_pt = {"lat": o_stop.lat, "lon": o_stop.lon}
+            d_pt = {"lat": d_stop.lat, "lon": d_stop.lon}
+            
+            # Encontrar o índice mais próximo à partida
+            start_idx = min(range(len(points)), key=lambda i: dist(points[i], o_pt))
+            # Encontrar o índice mais próximo à chegada (apenas do start_idx em diante)
+            end_idx = min(range(start_idx, len(points)), key=lambda i: dist(points[i], d_pt))
+            
+            points = points[start_idx:end_idx+1]
+
+        responses.append({
+            "route_id": trip.route_id,
+            "route_name": route_name,
+            "route_color": route_color,
+            "trip_id": trip_id,
+            "arrival_time": arrival_time,
+            "total_time_mins": int(best_time_diff // 60),
+            "boarding_stop": {
+                "id": o_stop.id,
+                "name": o_stop.name,
+                "lat": o_stop.lat,
+                "lon": o_stop.lon
+            },
+            "alighting_stop": {
+                "id": d_stop.id,
+                "name": d_stop.name,
+                "lat": d_stop.lat,
+                "lon": d_stop.lon
+            },
+            "intermediate_stops": intermediate_stops,
+            "shape_coordinates": points
+        })
+
+    return responses

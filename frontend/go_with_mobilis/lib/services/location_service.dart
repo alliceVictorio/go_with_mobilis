@@ -30,7 +30,7 @@ class LocationService {
 
     // Se chegar aqui é porque está tudo autorizado
     Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
     
     return LatLng(position.latitude, position.longitude);

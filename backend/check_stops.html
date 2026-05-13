@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verificar Paragens - Linha 1</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 100vh; width: 100vw; margin: 0; padding: 0; }
+        body { margin: 0; }
+        .leaflet-tooltip { font-weight: bold; font-size: 14px; color: #d32f2f; border: 2px solid #d32f2f; }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+    var map = L.map('map').setView([39.7436, -8.8071], 14);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    L.marker([39.746472963926266, -8.803978831434387]).bindPopup('<b>Paragem 1</b><br>Lg. José Lúcio (Terminal)').addTo(map).bindTooltip('1', {permanent: true, direction: 'right'});
+    L.marker([39.74799398983574, -8.80387807685887]).bindPopup('<b>Paragem 2</b><br>Av. Heróis de Angola').addTo(map).bindTooltip('2', {permanent: true, direction: 'right'});
+    L.marker([39.74979040444038, -8.806582004471508]).bindPopup('<b>Paragem 3</b><br>Av. Cidade de Maringá / Mercado Municipal').addTo(map).bindTooltip('3', {permanent: true, direction: 'right'});
+    L.marker([39.75213196444868, -8.807534697583042]).bindPopup('<b>Paragem 4</b><br>Arrabal da Ponte').addTo(map).bindTooltip('4', {permanent: true, direction: 'right'});
+    L.marker([39.75245084320429, -8.808635907865161]).bindPopup('<b>Paragem 5</b><br>Nova Leiria').addTo(map).bindTooltip('5', {permanent: true, direction: 'right'});
+    L.marker([39.75428847223228, -8.81187615620379]).bindPopup('<b>Paragem 6</b><br>Almoínha Grande').addTo(map).bindTooltip('6', {permanent: true, direction: 'right'});
+    L.marker([39.75466017977154, -8.820511471249018]).bindPopup('<b>Paragem 7</b><br>Bairro das Almoínhas').addTo(map).bindTooltip('7', {permanent: true, direction: 'right'});
+    L.marker([39.75555669942769, -8.823517034075238]).bindPopup('<b>Paragem 8</b><br>Estrada da Estação').addTo(map).bindTooltip('8', {permanent: true, direction: 'right'});
+    L.marker([39.7569100548871, -8.82330065718406]).bindPopup('<b>Paragem 9</b><br>Rua João de Deus').addTo(map).bindTooltip('9', {permanent: true, direction: 'right'});
+    L.marker([39.7588325233402, -8.821714196389776]).bindPopup('<b>Paragem 10</b><br>Rua da Pilada').addTo(map).bindTooltip('10', {permanent: true, direction: 'right'});
+    L.marker([39.76081061642925, -8.82159983380032]).bindPopup('<b>Paragem 11</b><br>Estrada da Figueira da Foz').addTo(map).bindTooltip('11', {permanent: true, direction: 'right'});
+    L.marker([39.76305660223604, -8.822578018360579]).bindPopup('<b>Paragem 12</b><br>Esc. Afonso Lopes Vieira').addTo(map).bindTooltip('12', {permanent: true, direction: 'right'});
+    L.marker([39.76424367369894, -8.824925838820116]).bindPopup('<b>Paragem 13</b><br>Travessa da Maligueira').addTo(map).bindTooltip('13', {permanent: true, direction: 'right'});
+    L.marker([39.76164147038948, -8.824332632878914]).bindPopup('<b>Paragem 14</b><br>Rotunda R. Dom Carlos I').addTo(map).bindTooltip('14', {permanent: true, direction: 'right'});
+    L.marker([39.75906247535405, -8.825462048185274]).bindPopup('<b>Paragem 15</b><br>Rua Dom Carlos I').addTo(map).bindTooltip('15', {permanent: true, direction: 'right'});
+    L.marker([39.7565917375804, -8.827208867717887]).bindPopup('<b>Paragem 16</b><br>Leiria (Estação)').addTo(map).bindTooltip('16', {permanent: true, direction: 'right'});
+    L.marker([39.75527302619123, -8.822892003986656]).bindPopup('<b>Paragem 17</b><br>Estrada da Estação (Regresso)').addTo(map).bindTooltip('17', {permanent: true, direction: 'right'});
+    L.marker([39.75457644493237, -8.820678452046842]).bindPopup('<b>Paragem 18</b><br>Bairro das Almoínhas (Regresso)').addTo(map).bindTooltip('18', {permanent: true, direction: 'right'});
+    L.marker([39.750755078683845, -8.812474258354802]).bindPopup('<b>Paragem 19</b><br>Estádio Magalhães Pessoa').addTo(map).bindTooltip('19', {permanent: true, direction: 'right'});
+    L.marker([39.74969319691178, -8.809176722460267]).bindPopup('<b>Paragem 20</b><br>Piscinas Municipais').addTo(map).bindTooltip('20', {permanent: true, direction: 'right'});
+    L.marker([39.74679297496132, -8.8154090186598]).bindPopup('<b>Paragem 21</b><br>Av. 25 De Abril').addTo(map).bindTooltip('21', {permanent: true, direction: 'right'});
+    L.marker([39.74438933792627, -8.814232024081862]).bindPopup('<b>Paragem 22</b><br>Av. Papa Francisco').addTo(map).bindTooltip('22', {permanent: true, direction: 'right'});
+    L.marker([39.74298033669601, -8.811968775587914]).bindPopup('<b>Paragem 23</b><br>Bairro dos Capuchos').addTo(map).bindTooltip('23', {permanent: true, direction: 'right'});
+    L.marker([39.74108822577519, -8.811335349123441]).bindPopup('<b>Paragem 24</b><br>Câmara Municipal (ESEL)').addTo(map).bindTooltip('24', {permanent: true, direction: 'right'});
+    L.marker([39.73950408047108, -8.815942999776524]).bindPopup('<b>Paragem 25</b><br>Esc. Francisco Rodrigues Lobo').addTo(map).bindTooltip('25', {permanent: true, direction: 'right'});
+    L.marker([39.73375793875827, -8.823157089104177]).bindPopup('<b>Paragem 26</b><br>Rua Qta. Do Seminário Centro Comercial').addTo(map).bindTooltip('26', {permanent: true, direction: 'right'});
+    L.marker([39.73316884360682, -8.820953976506257]).bindPopup('<b>Paragem 27</b><br>Campus 2 IPL').addTo(map).bindTooltip('27', {permanent: true, direction: 'right'});
+    L.marker([39.73521843637866, -8.823224119361035]).bindPopup('<b>Paragem 28</b><br>Rotunda Alto do Vieiro').addTo(map).bindTooltip('28', {permanent: true, direction: 'right'});
+    L.marker([39.72707880440263, -8.812253356150014]).bindPopup('<b>Paragem 29</b><br>Escola José Saraiva').addTo(map).bindTooltip('29', {permanent: true, direction: 'right'});
+    L.marker([39.72996814411709, -8.810110085151587]).bindPopup('<b>Paragem 30</b><br>Rua da Malaposta').addTo(map).bindTooltip('30', {permanent: true, direction: 'right'});
+    L.marker([39.732881429646646, -8.80960470430765]).bindPopup('<b>Paragem 31</b><br>Prisão Escola').addTo(map).bindTooltip('31', {permanent: true, direction: 'right'});
+    L.marker([39.73688639828463, -8.810776711228344]).bindPopup('<b>Paragem 32</b><br>Centro De Saúde Gorjão Henriques').addTo(map).bindTooltip('32', {permanent: true, direction: 'right'});
+    L.marker([39.73911868058745, -8.808946225455134]).bindPopup('<b>Paragem 33</b><br>Bairro dos Sargentos').addTo(map).bindTooltip('33', {permanent: true, direction: 'right'});
+    L.marker([39.73965435669537, -8.806161935750954]).bindPopup('<b>Paragem 34</b><br>Av. Marquês de Pombal').addTo(map).bindTooltip('34', {permanent: true, direction: 'right'});
+    L.marker([39.73912847928311, -8.804066081911259]).bindPopup('<b>Paragem 35</b><br>Av. General Humberto Delgado 1').addTo(map).bindTooltip('35', {permanent: true, direction: 'right'});
+    L.marker([39.73694131604107, -8.800843357809807]).bindPopup('<b>Paragem 36</b><br>Av. General Humberto Delgado 2').addTo(map).bindTooltip('36', {permanent: true, direction: 'right'});
+    L.marker([39.73415427754461, -8.79937236425564]).bindPopup('<b>Paragem 37</b><br>Guimarota').addTo(map).bindTooltip('37', {permanent: true, direction: 'right'});
+    L.marker([39.73197481451816, -8.794968454303572]).bindPopup('<b>Paragem 38</b><br>Escola Profissional (ISLA)').addTo(map).bindTooltip('38', {permanent: true, direction: 'right'});
+    L.marker([39.73213988576586, -8.791464029922869]).bindPopup('<b>Paragem 39</b><br>São Romão - Rua Florentino Pedro Lopes').addTo(map).bindTooltip('39', {permanent: true, direction: 'right'});
+    L.marker([39.73519792625542, -8.792555465646753]).bindPopup('<b>Paragem 40</b><br>São Romão / Rua da Fonte').addTo(map).bindTooltip('40', {permanent: true, direction: 'right'});
+    L.marker([39.73608093557608, -8.793803562566845]).bindPopup('<b>Paragem 41</b><br>São Romão Rua Esperança CETL').addTo(map).bindTooltip('41', {permanent: true, direction: 'right'});
+    L.marker([39.74393972410096, -8.793684938572222]).bindPopup('<b>Paragem 42</b><br>Hospital (Visitas)').addTo(map).bindTooltip('42', {permanent: true, direction: 'right'});
+    L.marker([39.74247171317816, -8.794360643852515]).bindPopup('<b>Paragem 43</b><br>Hospital (Consultas Externas)').addTo(map).bindTooltip('43', {permanent: true, direction: 'right'});
+    L.marker([39.7445269550646, -8.792239109929122]).bindPopup('<b>Paragem 44</b><br>Escola Correia Mateus').addTo(map).bindTooltip('44', {permanent: true, direction: 'right'});
+    L.marker([39.743286321788, -8.792508274975068]).bindPopup('<b>Paragem 45</b><br>Hospital Santo André').addTo(map).bindTooltip('45', {permanent: true, direction: 'right'});
+    L.marker([39.741147078617104, -8.79577873834951]).bindPopup('<b>Paragem 46</b><br>Rua de Santo André').addTo(map).bindTooltip('46', {permanent: true, direction: 'right'});
+    L.marker([39.74115185774075, -8.798469803798701]).bindPopup('<b>Paragem 47</b><br>Rua das Olhalvas').addTo(map).bindTooltip('47', {permanent: true, direction: 'right'});
+    L.marker([39.7415770953199, -8.799945199518474]).bindPopup('<b>Paragem 48</b><br>Bombeiros Municipais').addTo(map).bindTooltip('48', {permanent: true, direction: 'right'});
+    L.marker([39.74264146731794, -8.801816107768186]).bindPopup('<b>Paragem 49</b><br>Ponte Hintze Ribeiro').addTo(map).bindTooltip('49', {permanent: true, direction: 'right'});
+    L.marker([39.74529274728037, -8.806199979626903]).bindPopup('<b>Paragem 50</b><br>Jardim Luís de Camões').addTo(map).bindTooltip('50', {permanent: true, direction: 'right'});
+    L.marker([39.746472963926266, -8.803978831434387]).bindPopup('<b>Paragem 51</b><br>Lg. José Lúcio (Término)').addTo(map).bindTooltip('51', {permanent: true, direction: 'right'});
+    
+</script>
+</body>
+</html>
