@@ -122,8 +122,23 @@ class ApiService {
     return [];
   }
 
+  static Future<List<dynamic>> getStopRoutes(String stopId) async {
+    final url = Uri.parse('$baseUrl/stops/$stopId/routes');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Erro ao obter linhas da paragem: $e');
+      }
+    }
+    return [];
+  }
 
-  static Future<Map<String, dynamic>?> navigate(double fromLat, double fromLon, double toLat, double toLon, String departureTime) async {
+
+  static Future<dynamic> navigate(double fromLat, double fromLon, double toLat, double toLon, String departureTime) async {
     final url = Uri.parse('$baseUrl/navigate?from_lat=$fromLat&from_lon=$fromLon&to_lat=$toLat&to_lon=$toLon&departure_time=$departureTime');
     try {
       final response = await http.get(url);
@@ -281,14 +296,19 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getFavorites() async {
+    final token = await _storage.read(key: 'access_token');
+    if (token == null) return [];
+    
     final url = Uri.parse('$baseUrl/favorites');
     try {
-      final token = await _storage.read(key: 'access_token');
-      if (token == null) return [];
       final response = await http.get(
         url,
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
       );
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -299,13 +319,19 @@ class ApiService {
   }
 
   static Future<bool> removeFavorite(String stopId) async {
+    final token = await _storage.read(key: 'access_token');
+    if (token == null) return false;
+    
     final url = Uri.parse('$baseUrl/favorites/$stopId');
     try {
-      final token = await _storage.read(key: 'access_token');
       final response = await http.delete(
         url,
-        headers: {'Authorization': 'Bearer $token'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
       );
+
       return response.statusCode == 200;
     } catch (e) {
       if (kDebugMode) print('Erro ao remover favorito: $e');

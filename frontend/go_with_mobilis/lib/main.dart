@@ -4,7 +4,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/admin_panel_screen.dart';
-import 'screens/admin_panel_screen.dart';
 import 'screens/passenger_map_screen.dart';
 
 // Variável Global Simples para Alterar o Tema em Tempo Real

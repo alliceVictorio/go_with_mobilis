@@ -114,6 +114,7 @@ class RoutePlanResponse(BaseModel):
     route_color: str
     trip_id: str
     arrival_time: str
+    total_time_mins: int
     boarding_stop: NavigationStop
     alighting_stop: NavigationStop
     intermediate_stops: List[NavigationStop]

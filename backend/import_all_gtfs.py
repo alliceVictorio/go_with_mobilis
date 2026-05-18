@@ -4,12 +4,28 @@ from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base
 import models
 
-def recreate_database():
-    print("Recriando a base de dados (Limpando tabelas anteriores)...")
-    # Limpa todas as tabelas e recria-as do zero para garantir chaves limpas
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    print("Base de dados recriada e fresca configurada!")
+def clear_gtfs_tables():
+    print("Limpando dados GTFS anteriores (mantendo utilizadores e favoritos intactos)...")
+    db = SessionLocal()
+    try:
+        # A ordem de eliminação é importante devido às chaves estrangeiras (Foreign Keys)
+        # Primeiro eliminam-se os dependentes, depois os pais
+        db.query(models.StopTime).delete()
+        db.query(models.Frequency).delete()
+        db.query(models.Trip).delete()
+        db.query(models.Route).delete()
+        db.query(models.Stop).delete()
+        db.query(models.Calendar).delete()
+        db.query(models.Shape).delete()
+        db.query(models.Agency).delete()
+        db.commit()
+        print("Tabelas GTFS limpas com sucesso. Os teus utilizadores estão a salvo!")
+    except Exception as e:
+        db.rollback()
+        print(f"Erro ao limpar tabelas: {e}")
+        raise e
+    finally:
+        db.close()
 
 def import_all():
     db = SessionLocal()
@@ -65,11 +81,19 @@ def import_all():
             print("Importando Routes...")
             df = pd.read_csv("GTFs/routes.txt")
             for _, row in df.iterrows():
+                short_name = str(row.get('route_short_name', '')) if pd.notna(row.get('route_short_name')) else None
+                
+                color = str(row.get('route_color', '')) if pd.notna(row.get('route_color')) else None
+                # Forçar cores oficiais da Mobilis para as linhas principais
+                if short_name == '1': color = '156A40' # Verde
+                elif short_name == '2': color = 'E31C39' # Vermelho
+                elif short_name == '9': color = '000000' # Preto
+
                 db.add(models.Route(
                     id=str(row['route_id']),
-                    short_name=str(row.get('route_short_name', '')) if pd.notna(row.get('route_short_name')) else None,
+                    short_name=short_name,
                     long_name=str(row.get('route_long_name', '')) if pd.notna(row.get('route_long_name')) else None,
-                    color=str(row.get('route_color', '')) if pd.notna(row.get('route_color')) else None
+                    color=color
                 ))
             db.commit()
 
@@ -147,5 +171,5 @@ def import_all():
         db.close()
 
 if __name__ == "__main__":
-    recreate_database()
+    clear_gtfs_tables()
     import_all()
