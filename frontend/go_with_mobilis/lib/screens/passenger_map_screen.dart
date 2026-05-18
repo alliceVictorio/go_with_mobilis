@@ -514,6 +514,78 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
+  void _showAlertsModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 5,
+                margin: const EdgeInsets.only(bottom: 24),
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4)),
+              ),
+            ),
+            Row(
+              children: [
+                Icon(Icons.notifications_active, color: Theme.of(context).colorScheme.primary, size: 28),
+                const SizedBox(width: 12),
+                Text('Avisos e Alertas', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            FutureBuilder<List<dynamic>>(
+              future: ApiService.getActiveAlerts(),
+              builder: (ctx, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                
+                if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: const Center(
+                      child: Text('Não existem avisos ou alertas ativos no momento.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))
+                    ),
+                  );
+                }
+                
+                final alerts = snapshot.data!;
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: alerts.length,
+                  separatorBuilder: (ctx, i) => const Divider(),
+                  itemBuilder: (ctx, i) {
+                    final alert = alerts[i];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 32),
+                      title: Text(alert['message'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      subtitle: Text(alert['created_at'].toString().substring(0, 16), style: const TextStyle(fontSize: 12)),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showLinesScheduleModal() {
     showModalBottomSheet(
       context: context,
@@ -731,7 +803,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 ),
                 const SizedBox(height: 20),
                 _buildNavIcon(Icons.star, "Favoritos"),
-                _buildNavIcon(Icons.notifications_active, "Alertas"),
+                _buildNavIcon(Icons.notifications_active, "Alertas", onTap: _showAlertsModal),
                 _buildNavIcon(Icons.schedule, "Horários", onTap: _showLinesScheduleModal),
                 const Spacer(),
                 _buildNavIcon(

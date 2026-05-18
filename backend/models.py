@@ -2,6 +2,14 @@ from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Float, Time
 from sqlalchemy.orm import relationship
 from database import Base
 from geoalchemy2 import Geometry # Precisas de instalar: pip install geoalchemy2
+from datetime import datetime
+
+class Alert(Base):
+    __tablename__ = "alerts"
+    id = Column(Integer, primary_key=True, index=True)
+    message = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 class Stop(Base):
     __tablename__ = "stops"

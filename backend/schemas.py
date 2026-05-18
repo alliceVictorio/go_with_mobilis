@@ -185,3 +185,26 @@ class ShapeCreate(BaseModel):
 class ShapeUpdate(BaseModel):
     coordinates: List[Coordinate]
 
+class UserAdminResponse(UserResponse):
+    favorites_count: int
+
+    class Config:
+        from_attributes = True
+
+class AlertCreate(BaseModel):
+    message: str
+    is_active: Optional[bool] = True
+
+class AlertUpdate(BaseModel):
+    message: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class AlertResponse(BaseModel):
+    id: int
+    message: str
+    is_active: bool
+    created_at: str
+
+    class Config:
+        from_attributes = True
+

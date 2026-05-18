@@ -45,6 +45,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               NavigationRailDestination(icon: Icon(Icons.schedule), label: Text('Horários')),
               NavigationRailDestination(icon: Icon(Icons.timeline), label: Text('Percursos')),
               NavigationRailDestination(icon: Icon(Icons.people), label: Text('Utilizadores')),
+              NavigationRailDestination(icon: Icon(Icons.warning), label: Text('Alertas')),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1),
@@ -63,6 +64,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       case 2: return const AdminSchedulesView();
       case 3: return const AdminShapesView();
       case 4: return const AdminUsersView();
+      case 5: return const AdminAlertsView();
       default: return const Center(child: Text('Em breve...'));
     }
   }
@@ -622,8 +624,8 @@ class _AdminUsersViewState extends State<AdminUsersView> {
                 child: Icon(isAdmin ? Icons.admin_panel_settings : Icons.person, color: Colors.white),
               ),
               title: Text('${u['first_name']} ${u['last_name']}', style: TextStyle(decoration: isActive ? null : TextDecoration.lineThrough)),
-              subtitle: Text('${u['email']}${u['phone_number'] != null ? '\n${u['phone_number']}' : ''}'),
-              isThreeLine: u['phone_number'] != null,
+              subtitle: Text('${u['email']}${u['phone_number'] != null ? '\n${u['phone_number']}' : ''}\nFavoritos: ${u['favorites_count'] ?? 0}'),
+              isThreeLine: true,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -669,6 +671,151 @@ class _AdminUsersViewState extends State<AdminUsersView> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ==========================================
+// VIEW: ALERTAS (Alerts)
+// ==========================================
+class AdminAlertsView extends StatefulWidget {
+  const AdminAlertsView({super.key});
+  @override
+  State<AdminAlertsView> createState() => _AdminAlertsViewState();
+}
+class _AdminAlertsViewState extends State<AdminAlertsView> {
+  List<dynamic> _alerts = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final alerts = await ApiService.getAdminAlerts();
+    if (mounted) setState(() { _alerts = alerts; _isLoading = false; });
+  }
+
+  void _showForm([Map<String, dynamic>? alert]) {
+    final msgController = TextEditingController(text: alert?['message'] ?? '');
+    bool isActive = alert?['is_active'] ?? true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateSB) => AlertDialog(
+            title: Text(alert == null ? 'Novo Alerta' : 'Editar Alerta'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: msgController, 
+                    decoration: const InputDecoration(labelText: 'Mensagem do Alerta', hintText: 'Ex: Linha 1 com atraso'),
+                    maxLines: 3,
+                  ),
+                  SwitchListTile(
+                    title: const Text('Visível para os Passageiros'),
+                    value: isActive,
+                    onChanged: (v) => setStateSB(() => isActive = v),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(child: const Text('Cancelar'), onPressed: () => Navigator.of(ctx).pop()),
+              ElevatedButton(
+                child: const Text('Guardar'),
+                onPressed: () async {
+                  if (msgController.text.trim().isEmpty) return;
+                  Navigator.of(ctx).pop();
+                  final data = {
+                    'message': msgController.text.trim(),
+                    'is_active': isActive
+                  };
+                  final success = alert != null 
+                    ? await ApiService.updateAdminAlert(alert['id'], data) 
+                    : await ApiService.createAdminAlert(data);
+                  if (success) _loadData();
+                  else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao guardar alerta.')));
+                },
+              )
+            ],
+          )
+        );
+      }
+    );
+  }
+
+  void _delete(int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar Alerta?'),
+        content: const Text('Tem a certeza que pretende eliminar permanentemente este alerta?'),
+        actions: [
+          TextButton(child: const Text('Cancelar'), onPressed: () => Navigator.of(ctx).pop(false)),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Eliminar', style: TextStyle(color: Colors.white)), onPressed: () => Navigator.of(ctx).pop(true)),
+        ],
+      )
+    );
+    if (confirm == true) {
+      final success = await ApiService.deleteAdminAlert(id);
+      if (success) _loadData();
+      else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha ao eliminar alerta.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
+        itemCount: _alerts.length,
+        itemBuilder: (ctx, i) {
+          final a = _alerts[i];
+          final isActive = a['is_active'] ?? true;
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ListTile(
+              leading: Icon(Icons.warning, color: isActive ? Colors.orange : Colors.grey, size: 36),
+              title: Text(a['message'], style: TextStyle(fontWeight: FontWeight.bold, decoration: isActive ? null : TextDecoration.lineThrough)),
+              subtitle: Text('Criado a: ${a['created_at']}'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Ativo', style: TextStyle(fontSize: 10)),
+                      SizedBox(
+                        height: 24,
+                        child: Switch(
+                          value: isActive,
+                          onChanged: (val) async {
+                            final success = await ApiService.updateAdminAlert(a['id'], {'is_active': val});
+                            if (success) _loadData();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showForm(a)),
+                  IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _delete(a['id'])),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.add),
+        onPressed: () => _showForm(),
       ),
     );
   }

@@ -397,6 +397,35 @@ def add_favorite(
     db.refresh(db_fav)
     return db_fav
 
+@app.get("/favorites", response_model=List[schemas.FavoriteResponse])
+def get_favorites(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    return current_user.favorites
+
+@app.delete("/favorites/{stop_id}")
+def remove_favorite(
+    stop_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    db_fav = db.query(models.Favorite).filter(
+        models.Favorite.stop_id == stop_id,
+        models.Favorite.user_id == current_user.id
+    ).first()
+    
+    if not db_fav:
+        raise HTTPException(status_code=404, detail="Favorito não encontrado")
+        
+    db.delete(db_fav)
+    db.commit()
+    return {"detail": "Favorito removido"}
+
+@app.get("/alerts", response_model=List[schemas.AlertResponse])
+def get_active_alerts(db: Session = Depends(database.get_db)):
+    return db.query(models.Alert).filter(models.Alert.is_active == True).order_by(models.Alert.id.desc()).all()
+
 @app.get("/navigate", response_model=schemas.RoutePlanResponse, summary="Obter Rota de Navegação")
 def get_navigation_route(
     from_lat: float = Query(..., description="Latitude de origem"),

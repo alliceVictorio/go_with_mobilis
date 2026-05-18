@@ -20,10 +20,25 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 # --- USERS ---
 
-@admin_router.get("/users", response_model=list[schemas.UserResponse])
+@admin_router.get("/users", response_model=list[schemas.UserAdminResponse])
 def get_admin_users(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
     if not current_user.is_admin: raise HTTPException(status_code=403, detail="Não autorizado")
-    return db.query(models.User).all()
+    users = db.query(models.User).all()
+    result = []
+    for u in users:
+        u_dict = {
+            "id": u.id,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email,
+            "phone_number": u.phone_number,
+            "profile_picture": u.profile_picture,
+            "is_active": u.is_active,
+            "is_admin": u.is_admin,
+            "favorites_count": len(u.favorites)
+        }
+        result.append(u_dict)
+    return result
 
 @admin_router.put("/users/{user_id}", response_model=schemas.UserResponse)
 def update_admin_user(user_id: int, user_update: schemas.UserAdminUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
@@ -241,4 +256,52 @@ def get_shapes(db: Session = Depends(database.get_db), current_user: models.User
     # Para efeitos simples, não retornamos os pontos todos num GET all porque é muito pesado, mas para o MVP enviamos o shape_id apenas.
     shapes_db = db.query(models.Shape.shape_id).distinct().all()
     return [{"route_id": "", "shape_id": s.shape_id, "coordinates": []} for s in shapes_db]
+
+# --- ALERTS ---
+
+@admin_router.get("/alerts", response_model=list[schemas.AlertResponse])
+def get_admin_alerts(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin: raise HTTPException(status_code=403, detail="Não autorizado")
+    return db.query(models.Alert).order_by(models.Alert.id.desc()).all()
+
+@admin_router.post("/alerts", response_model=schemas.AlertResponse)
+def create_admin_alert(alert: schemas.AlertCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin: raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    new_alert = models.Alert(
+        message=alert.message,
+        is_active=alert.is_active
+    )
+    db.add(new_alert)
+    db.commit()
+    db.refresh(new_alert)
+    return new_alert
+
+@admin_router.put("/alerts/{alert_id}", response_model=schemas.AlertResponse)
+def update_admin_alert(alert_id: int, alert_update: schemas.AlertUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin: raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    db_alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
+    if not db_alert: raise HTTPException(status_code=404, detail="Alerta não encontrado")
+    
+    if alert_update.message is not None:
+        db_alert.message = alert_update.message
+    if alert_update.is_active is not None:
+        db_alert.is_active = alert_update.is_active
+        
+    db.commit()
+    db.refresh(db_alert)
+    return db_alert
+
+@admin_router.delete("/alerts/{alert_id}")
+def delete_admin_alert(alert_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin: raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    db_alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
+    if not db_alert: raise HTTPException(status_code=404, detail="Alerta não encontrado")
+    
+    db.delete(db_alert)
+    db.commit()
+    return {"detail": "Alerta eliminado"}
+
 

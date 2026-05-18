@@ -280,6 +280,39 @@ class ApiService {
     }
   }
 
+  static Future<List<dynamic>> getFavorites() async {
+    final url = Uri.parse('$baseUrl/favorites');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      if (token == null) return [];
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao obter favoritos: $e');
+    }
+    return [];
+  }
+
+  static Future<bool> removeFavorite(String stopId) async {
+    final url = Uri.parse('$baseUrl/favorites/$stopId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.delete(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao remover favorito: $e');
+      return false;
+    }
+  }
+
   static Future<void> logout() async {
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'is_admin');
@@ -555,5 +588,78 @@ class ApiService {
     }
     return [];
   }
+
+  // --- ALERTS API ---
+  static Future<List<dynamic>> getActiveAlerts() async {
+    final url = Uri.parse('$baseUrl/alerts');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao obter alertas ativos: $e');
+    }
+    return [];
+  }
+
+  static Future<List<dynamic>> getAdminAlerts() async {
+    final url = Uri.parse('$baseUrl/admin/alerts');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao obter alertas admin: $e');
+    }
+    return [];
+  }
+
+  static Future<bool> createAdminAlert(Map<String, dynamic> data) async {
+    final url = Uri.parse('$baseUrl/admin/alerts');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao criar alerta: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> updateAdminAlert(int alertId, Map<String, dynamic> data) async {
+    final url = Uri.parse('$baseUrl/admin/alerts/$alertId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+        body: jsonEncode(data),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao atualizar alerta: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deleteAdminAlert(int alertId) async {
+    final url = Uri.parse('$baseUrl/admin/alerts/$alertId');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.delete(url, headers: {'Authorization': 'Bearer $token'});
+      return response.statusCode == 200;
+    } catch (e) {
+      if (kDebugMode) print('Erro ao apagar alerta: $e');
+      return false;
+    }
+  }
 }
+
 
