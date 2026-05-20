@@ -4,10 +4,21 @@ def generate_html():
     print("A ler dados...")
     st = pd.read_csv("GTFs/stop_times.txt")
     stops = pd.read_csv("GTFs/stops.txt")
+    trips = pd.read_csv("GTFs/trips.txt")
+    shapes = pd.read_csv("GTFs/shapes.txt")
     
     # Filtrar pela Linha 1 (trip T_UTIL_01)
     t1 = st[st['trip_id'] == 'T_UTIL_01'].sort_values('stop_sequence')
     t1 = t1.merge(stops, on='stop_id').sort_values('stop_sequence')
+    
+    trip_shape_id = trips[trips['trip_id'] == 'T_UTIL_01']['shape_id'].iloc[0]
+    shape_pts = shapes[shapes['shape_id'] == trip_shape_id].sort_values('shape_pt_sequence')
+    
+    # Construir a polyline para o Leaflet
+    shape_js_array = []
+    for _, row in shape_pts.iterrows():
+        shape_js_array.append(f"[{row['shape_pt_lat']}, {row['shape_pt_lon']}]")
+    polyline_js = f"var latlngs = [\n        {', '.join(shape_js_array)}\n    ];\n    L.polyline(latlngs, {{color: 'blue', weight: 4, opacity: 0.7}}).addTo(map);"
     
     # Construir os marcadores para o Leaflet (JS array)
     markers_js = []
@@ -46,6 +57,8 @@ def generate_html():
         maxZoom: 19,
         attribution: '© OpenStreetMap'
     }}).addTo(map);
+
+    {polyline_js}
 
     {markers_str}
     
