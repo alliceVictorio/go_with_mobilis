@@ -367,7 +367,7 @@ class ApiService {
     return null;
   }
 
-  static Future<bool> updateUserProfile(String? firstName, String? lastName, String? email, String? password, String? phoneNumber) async {
+  static Future<bool> updateUserProfile(String? firstName, String? lastName, String? email, String? password, String? phoneNumber, String? profilePicture) async {
     final url = Uri.parse('$baseUrl/users/me');
     try {
       final token = await _storage.read(key: 'access_token');
@@ -379,6 +379,7 @@ class ApiService {
       if (email != null && email.isNotEmpty) body['email'] = email;
       if (password != null && password.isNotEmpty) body['password'] = password;
       if (phoneNumber != null) body['phone_number'] = phoneNumber;
+      if (profilePicture != null) body['profile_picture'] = profilePicture;
       
       final response = await http.put(
         url,

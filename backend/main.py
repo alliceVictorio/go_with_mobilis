@@ -389,6 +389,8 @@ def update_user_me(
         current_user.hashed_password = pwd_context.hash(update_data.password)
     if update_data.phone_number is not None:
         current_user.phone_number = update_data.phone_number
+    if update_data.profile_picture is not None:
+        current_user.profile_picture = update_data.profile_picture
         
     db.commit()
     db.refresh(current_user)

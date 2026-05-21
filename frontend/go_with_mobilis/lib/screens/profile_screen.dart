@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 import '../services/api_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -20,6 +23,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isEditing = false;
   bool _isSaving = false;
 
+  Uint8List? _profileImageBytes;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage() async {
+    if (!_isEditing) return;
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 70,
+      );
+      if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
+        setState(() {
+          _profileImageBytes = bytes;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao selecionar imagem: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +64,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _lastNameController.text = profile['last_name'] ?? '';
         _phoneController.text = profile['phone_number'] ?? '';
         _emailController.text = profile['email'] ?? '';
+        if (profile['profile_picture'] != null && profile['profile_picture'].toString().isNotEmpty) {
+          try {
+            _profileImageBytes = base64Decode(profile['profile_picture']);
+          } catch (e) {
+            // Ignorar
+          }
+        }
         _isLoading = false;
       });
     } else {
@@ -81,12 +118,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => _isSaving = true);
     
+    String? profilePictureBase64;
+    if (_profileImageBytes != null) {
+      profilePictureBase64 = base64Encode(_profileImageBytes!);
+    }
+
     final success = await ApiService.updateUserProfile(
       firstName,
       lastName,
       email,
       null, 
       phoneText.isNotEmpty ? phoneText : null,
+      profilePictureBase64,
     );
     
     setState(() { 
@@ -167,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(ctx);
               
               setState(() => _isLoading = true);
-              final success = await ApiService.updateUserProfile(null, null, null, newPasswordCtrl.text, null);
+              final success = await ApiService.updateUserProfile(null, null, null, newPasswordCtrl.text, null, null);
               setState(() => _isLoading = false);
               
               if (mounted) {
@@ -242,23 +285,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 3),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 10,
-                                offset: Offset(0, 4),
-                              )
+                        GestureDetector(
+                          onTap: _isEditing ? _pickImage : null,
+                          child: Stack(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 3),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 10,
+                                      offset: Offset(0, 4),
+                                    )
+                                  ],
+                                ),
+                                child: CircleAvatar(
+                                  radius: 35,
+                                  backgroundColor: const Color(0xFF156A40),
+                                  backgroundImage: _profileImageBytes != null
+                                      ? MemoryImage(_profileImageBytes!)
+                                      : null,
+                                  child: _profileImageBytes == null
+                                      ? const Icon(Icons.person, size: 40, color: Colors.white)
+                                      : null,
+                                ),
+                              ),
+                              if (_isEditing)
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF3B9F3F),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ),
                             ],
-                          ),
-                          child: const CircleAvatar(
-                            radius: 35,
-                            backgroundColor: Color(0xFF156A40),
-                            child: Icon(Icons.person, size: 40, color: Colors.white),
                           ),
                         ),
                         const SizedBox(width: 16),

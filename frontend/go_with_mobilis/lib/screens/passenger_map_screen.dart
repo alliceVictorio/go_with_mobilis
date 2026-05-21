@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:geolocator/geolocator.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
@@ -31,6 +33,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   bool _isLoading = true;
   String _userName = "Mobilis Perfil";
   LatLng? _currentLocation;
+  Uint8List? _profileImageBytes;
   
   StreamSubscription<Position>? _positionStreamSubscription;
   LatLng? _lastFetchLocation;
@@ -54,6 +57,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   LatLng? _originPoint;
   List<dynamic> _allStops = [];
   bool _showNearbyStops = false;
+  static bool _hasShownAlertPopup = false;
 
   @override
   void initState() {
@@ -464,9 +468,17 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     final profile = await ApiService.getUserProfile();
     String userName = "Mobilis Perfil";
     bool isGuestLocal = false;
+    Uint8List? imgBytes;
     if (profile != null) {
       userName = '${profile['first_name'] ?? ''} ${profile['last_name'] ?? ''}'.trim();
       if (userName.isEmpty) userName = "Utilizador Mobilis";
+      if (profile['profile_picture'] != null && profile['profile_picture'].toString().isNotEmpty) {
+        try {
+          imgBytes = base64Decode(profile['profile_picture']);
+        } catch (e) {
+          // Ignorar
+        }
+      }
     } else {
       userName = "Convidado";
       isGuestLocal = true;
@@ -479,8 +491,53 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _isAdmin = adminState == 'true';
         _isGuest = isGuestLocal;
         _userName = userName;
+        _profileImageBytes = imgBytes;
         _isLoading = false;
       });
+      _checkAlertsPopup();
+    }
+  }
+
+  Future<void> _checkAlertsPopup() async {
+    if (_hasShownAlertPopup) return;
+    _hasShownAlertPopup = true;
+
+    final alerts = await ApiService.getActiveAlerts();
+    if (alerts.isNotEmpty && mounted) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+              SizedBox(width: 8),
+              Text('Aviso Importante'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: alerts.map<Widget>((alert) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Text(
+                    alert['message'] ?? '',
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Compreendi'),
+            )
+          ],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      );
     }
   }
 
@@ -927,10 +984,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        const CircleAvatar(
+                        CircleAvatar(
                           radius: 30,
                           backgroundColor: Colors.white,
-                          child: Icon(Icons.person, size: 40, color: Color(0xFF156A40)),
+                          backgroundImage: _profileImageBytes != null ? MemoryImage(_profileImageBytes!) : null,
+                          child: _profileImageBytes == null ? const Icon(Icons.person, size: 40, color: Color(0xFF156A40)) : null,
                         ),
                         const SizedBox(height: 12),
                         Text(_userName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
@@ -945,7 +1003,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   Navigator.of(context).pop(); // fecha o drawer primeiro
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (context) => const ProfileScreen())
-                  );
+                  ).then((_) {
+                    _loadState();
+                  });
                 },
               ),
             ListTile(
@@ -1357,7 +1417,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (context) => const ProfileScreen())
-                      );
+                      ).then((_) {
+                        _loadState();
+                      });
                     },
                     child: Container(
                       padding: const EdgeInsets.all(2), // Afasta o contorno da fotografia
@@ -1372,10 +1434,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           )
                         ],
                       ),
-                      child: const CircleAvatar(
+                      child: CircleAvatar(
                         radius: 20,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.person, size: 24, color: Color(0xFF0054A6)),
+                        backgroundImage: _profileImageBytes != null ? MemoryImage(_profileImageBytes!) : null,
+                        child: _profileImageBytes == null ? const Icon(Icons.person, size: 24, color: Color(0xFF0054A6)) : null,
                       ),
                     ),
                   ),

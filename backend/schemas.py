@@ -16,6 +16,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     password: Optional[str] = None
     phone_number: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
