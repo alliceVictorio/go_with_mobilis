@@ -201,6 +201,13 @@ class AlertUpdate(BaseModel):
     message: Optional[str] = None
     is_active: Optional[bool] = None
 
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_stops: int
+    total_routes: int
+    active_alerts: int
+
+
 class AlertResponse(BaseModel):
     id: int
     message: str

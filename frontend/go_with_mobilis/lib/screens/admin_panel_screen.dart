@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../services/api_service.dart';
 
 class AdminPanelScreen extends StatefulWidget {
@@ -40,6 +42,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             selectedIconTheme: const IconThemeData(color: Color(0xFF0054A6)),
             selectedLabelTextStyle: const TextStyle(color: Color(0xFF0054A6), fontWeight: FontWeight.bold),
             destinations: const [
+              NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Visão Geral')),
               NavigationRailDestination(icon: Icon(Icons.route), label: Text('Linhas')),
               NavigationRailDestination(icon: Icon(Icons.location_on), label: Text('Paragens')),
               NavigationRailDestination(icon: Icon(Icons.schedule), label: Text('Horários')),
@@ -59,14 +62,91 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
   Widget _buildBody() {
     switch (_selectedIndex) {
-      case 0: return const AdminRoutesView();
-      case 1: return const AdminStopsView();
-      case 2: return const AdminSchedulesView();
-      case 3: return const AdminShapesView();
-      case 4: return const AdminUsersView();
-      case 5: return const AdminAlertsView();
+      case 0: return const AdminDashboardView();
+      case 1: return const AdminRoutesView();
+      case 2: return const AdminStopsView();
+      case 3: return const AdminSchedulesView();
+      case 4: return const AdminShapesView();
+      case 5: return const AdminUsersView();
+      case 6: return const AdminAlertsView();
       default: return const Center(child: Text('Em breve...'));
     }
+  }
+}
+
+// ==========================================
+// VIEW: DASHBOARD
+// ==========================================
+class AdminDashboardView extends StatefulWidget {
+  const AdminDashboardView({super.key});
+  @override
+  State<AdminDashboardView> createState() => _AdminDashboardViewState();
+}
+class _AdminDashboardViewState extends State<AdminDashboardView> {
+  Map<String, dynamic>? _stats;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    final stats = await ApiService.getAdminStats();
+    if (mounted) setState(() { _stats = stats; _isLoading = false; });
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 48, color: color),
+            const SizedBox(height: 16),
+            Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+            const SizedBox(height: 8),
+            Text(title, style: const TextStyle(fontSize: 16, color: Colors.blueGrey)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_stats == null) return const Center(child: Text('Erro ao carregar estatísticas.'));
+
+    return Padding(
+      padding: const EdgeInsets.all(32.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Visão Geral do Sistema', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF0054A6))),
+          const SizedBox(height: 32),
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: MediaQuery.of(context).size.width > 800 ? 4 : 2,
+              crossAxisSpacing: 24,
+              mainAxisSpacing: 24,
+              childAspectRatio: 1.2,
+              children: [
+                _buildStatCard('Utilizadores', _stats!['total_users'].toString(), Icons.people, Colors.blue),
+                _buildStatCard('Paragens', _stats!['total_stops'].toString(), Icons.location_on, Colors.green),
+                _buildStatCard('Linhas', _stats!['total_routes'].toString(), Icons.route, const Color(0xFF0054A6)),
+                _buildStatCard('Alertas Ativos', _stats!['active_alerts'].toString(), Icons.warning, Colors.orange),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -201,6 +281,8 @@ class AdminStopsView extends StatefulWidget {
 }
 class _AdminStopsViewState extends State<AdminStopsView> {
   List<dynamic> _stops = [];
+  List<dynamic> _filteredStops = [];
+  String _searchQuery = '';
   bool _isLoading = true;
 
   @override
@@ -212,13 +294,35 @@ class _AdminStopsViewState extends State<AdminStopsView> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final stops = await ApiService.getAdminStops();
-    if (mounted) setState(() { _stops = stops; _isLoading = false; });
+    if (mounted) {
+      setState(() { 
+        _stops = stops; 
+        _filterStops(_searchQuery);
+        _isLoading = false; 
+      });
+    }
   }
 
-  void _showForm([Map<String, dynamic>? stop]) {
+  void _filterStops(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isEmpty) {
+        _filteredStops = List.from(_stops);
+      } else {
+        _filteredStops = _stops.where((stop) {
+          final name = stop['name'].toString().toLowerCase();
+          final id = stop['id'].toString().toLowerCase();
+          final q = query.toLowerCase();
+          return name.contains(q) || id.contains(q);
+        }).toList();
+      }
+    });
+  }
+
+  void _showForm([Map<String, dynamic>? stop, LatLng? initialPoint]) {
     final nameController = TextEditingController(text: stop?['name'] ?? '');
-    final latController = TextEditingController(text: stop?['lat']?.toString() ?? '');
-    final lonController = TextEditingController(text: stop?['lon']?.toString() ?? '');
+    final latController = TextEditingController(text: stop?['lat']?.toString() ?? initialPoint?.latitude.toString() ?? '');
+    final lonController = TextEditingController(text: stop?['lon']?.toString() ?? initialPoint?.longitude.toString() ?? '');
     bool isActive = stop?['is_active'] ?? true;
 
     showDialog(
@@ -289,25 +393,107 @@ class _AdminStopsViewState extends State<AdminStopsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
-        itemCount: _stops.length,
-        itemBuilder: (ctx, i) {
-          final s = _stops[i];
-          final isActive = s['is_active'] ?? true;
-          return ListTile(
-            leading: Icon(Icons.location_on, color: isActive ? Colors.green : Colors.grey),
-            title: Text(s['name'], style: TextStyle(decoration: isActive ? null : TextDecoration.lineThrough)),
-            subtitle: Text('ID: ${s['id']} | Lat: ${s['lat'].toStringAsFixed(4)}, Lon: ${s['lon'].toStringAsFixed(4)}'),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showForm(s)),
-                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _delete(s['id'])),
-              ],
-            ),
-          );
-        },
-      ),
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : Row(
+            children: [
+              // Lista de Paragens (Esquerda)
+              SizedBox(
+                width: 350,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Pesquisar paragem (nome ou ID)',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                        ),
+                        onChanged: _filterStops,
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: _filteredStops.length,
+                        itemBuilder: (ctx, i) {
+                          final s = _filteredStops[i];
+                          final isActive = s['is_active'] ?? true;
+                          return ListTile(
+                            leading: Icon(Icons.location_on, color: isActive ? Colors.green : Colors.grey),
+                            title: Text(s['name'], style: TextStyle(decoration: isActive ? null : TextDecoration.lineThrough)),
+                            subtitle: Text('ID: ${s['id']} | Lat: ${s['lat'].toStringAsFixed(4)}, Lon: ${s['lon'].toStringAsFixed(4)}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showForm(s)),
+                                IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _delete(s['id'].toString())),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const VerticalDivider(width: 1, thickness: 1),
+              // Mapa Interativo (Direita)
+              Expanded(
+                child: Stack(
+                  children: [
+                    FlutterMap(
+                      options: MapOptions(
+                        initialCenter: const LatLng(39.7436, -8.8071), // Leiria
+                        initialZoom: 13.0,
+                        onTap: (tapPosition, point) {
+                          _showForm(null, point);
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.mobilis.app.admin',
+                        ),
+                        MarkerLayer(
+                          markers: _stops.map((s) {
+                            final isActive = s['is_active'] ?? true;
+                            return Marker(
+                              point: LatLng(s['lat'], s['lon']),
+                              width: 40,
+                              height: 40,
+                              child: GestureDetector(
+                                onTap: () => _showForm(s),
+                                child: Icon(
+                                  Icons.location_on,
+                                  color: isActive ? Colors.green : Colors.grey,
+                                  size: 40,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                        ),
+                        child: const Text('Dica: Clica no mapa para criar uma paragem!', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0054A6))),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            ],
+          ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
         onPressed: () => _showForm(),
@@ -511,6 +697,8 @@ class AdminUsersView extends StatefulWidget {
 }
 class _AdminUsersViewState extends State<AdminUsersView> {
   List<dynamic> _users = [];
+  List<dynamic> _filteredUsers = [];
+  String _searchQuery = '';
   bool _isLoading = true;
 
   @override
@@ -522,7 +710,30 @@ class _AdminUsersViewState extends State<AdminUsersView> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final users = await ApiService.getAdminUsers();
-    if (mounted) setState(() { _users = users; _isLoading = false; });
+    if (mounted) {
+      setState(() { 
+        _users = users; 
+        _filterUsers(_searchQuery);
+        _isLoading = false; 
+      });
+    }
+  }
+
+  void _filterUsers(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.isEmpty) {
+        _filteredUsers = List.from(_users);
+      } else {
+        _filteredUsers = _users.where((user) {
+          final first = user['first_name'].toString().toLowerCase();
+          final last = user['last_name'].toString().toLowerCase();
+          final email = user['email'].toString().toLowerCase();
+          final q = query.toLowerCase();
+          return first.contains(q) || last.contains(q) || email.contains(q);
+        }).toList();
+      }
+    });
   }
 
   void _updateUser(int id, Map<String, dynamic> data) async {
@@ -609,10 +820,26 @@ class _AdminUsersViewState extends State<AdminUsersView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
-        itemCount: _users.length,
-        itemBuilder: (ctx, i) {
-          final u = _users[i];
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Pesquisar utilizador (nome ou e-mail)',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onChanged: _filterUsers,
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _filteredUsers.length,
+                  itemBuilder: (ctx, i) {
+                    final u = _filteredUsers[i];
           final bool isActive = u['is_active'] ?? true;
           final bool isAdmin = u['is_admin'] ?? false;
           
@@ -671,8 +898,8 @@ class _AdminUsersViewState extends State<AdminUsersView> {
             ),
           );
         },
-      ),
-    );
+      )),
+    ]));
   }
 }
 

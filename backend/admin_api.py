@@ -18,6 +18,22 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 # --- ROUTES ---
 
+@admin_router.get("/stats", response_model=schemas.AdminStatsResponse)
+def get_admin_stats(db: Session = Depends(database.get_db), current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin: raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    total_users = db.query(models.User).count()
+    total_stops = db.query(models.Stop).count()
+    total_routes = db.query(models.Route).count()
+    active_alerts = db.query(models.Alert).filter(models.Alert.is_active == True).count()
+    
+    return {
+        "total_users": total_users,
+        "total_stops": total_stops,
+        "total_routes": total_routes,
+        "active_alerts": active_alerts
+    }
+
 # --- USERS ---
 
 @admin_router.get("/users", response_model=list[schemas.UserAdminResponse])

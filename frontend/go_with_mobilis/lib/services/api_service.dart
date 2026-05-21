@@ -398,6 +398,20 @@ class ApiService {
   }
 
   // --- ADMIN API ---
+  static Future<Map<String, dynamic>?> getAdminStats() async {
+    final url = Uri.parse('$baseUrl/admin/stats');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(url, headers: {'Authorization': 'Bearer $token'});
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao obter estatísticas: $e');
+    }
+    return null;
+  }
+
   static Future<List<dynamic>> getAdminUsers() async {
     final url = Uri.parse('$baseUrl/admin/users');
     try {
