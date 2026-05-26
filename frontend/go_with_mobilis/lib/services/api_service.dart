@@ -8,7 +8,7 @@ import 'dart:io' show NetworkInterface, InternetAddressType;
 
 class ApiService {
   static const _storage = FlutterSecureStorage();
-  static String _activeBaseUrl = 'http://127.0.0.1:8000';
+  static String _activeBaseUrl = 'https://go-with-mobilis-backend.onrender.com';
 
   // Obtém o URL ativo descoberto dinamicamente
   static String get baseUrl => _activeBaseUrl;
@@ -39,6 +39,7 @@ class ApiService {
 
     // 2. Definir candidatos rápidos a testar em paralelo
     final List<String> fastCandidates = [
+      'https://go-with-mobilis-backend.onrender.com',
       'http://localhost:8000',
       'http://127.0.0.1:8000',
       'http://10.0.2.2:8000', // Emulador Android
