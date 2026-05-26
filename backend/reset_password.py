@@ -10,7 +10,7 @@ new_password = "123456"
 hashed_password = pwd_context.hash(new_password)
 
 with engine.connect() as conn:
-    conn.execute(text("UPDATE users SET hashed_password = :hash WHERE email = 't8@t.com'"), {"hash": hashed_password})
+    conn.execute(text("UPDATE users SET hashed_password = :hash WHERE email = 'admin@mobilis.pt'"), {"hash": hashed_password})
     conn.commit()
 
-print("Password reset successfully for t8@t.com to: 123456")
+print("Password reset successfully for admin@mobilis.pt to: 123456")

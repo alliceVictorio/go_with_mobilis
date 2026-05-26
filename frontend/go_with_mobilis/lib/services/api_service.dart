@@ -1,17 +1,202 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart'; // for kIsWeb
 import 'package:latlong2/latlong.dart';
-import 'dart:io' show Platform;
+import 'dart:io' show NetworkInterface, InternetAddressType;
 
 class ApiService {
   static const _storage = FlutterSecureStorage();
+  static String _activeBaseUrl = 'http://127.0.0.1:8000';
 
-  // Usa o IP da rede local do computador para funcionar tanto no PC, como emuladores e telemóveis físicos
-  static String get baseUrl {
-    // 172.22.196.232 é o IP local atual da máquina de desenvolvimento (Dados Móveis)
-    return 'http://127.0.0.1:8000';
+  // Obtém o URL ativo descoberto dinamicamente
+  static String get baseUrl => _activeBaseUrl;
+
+  /// Descoberta automática e concorrente do servidor backend no arranque
+  static Future<void> discoverActiveServer() async {
+    // 1. Tentar ler do secure storage primeiro (cache do último IP funcional)
+    try {
+      final cachedUrl = await _storage.read(key: 'active_backend_url');
+      if (cachedUrl != null) {
+        if (kDebugMode) {
+          print('[Discovery] Testando URL em cache: $cachedUrl');
+        }
+        final verifiedUrl = await _probeUrl(cachedUrl);
+        if (verifiedUrl != null) {
+          _activeBaseUrl = verifiedUrl;
+          if (kDebugMode) {
+            print('[Discovery] Sucesso com URL em cache: $_activeBaseUrl');
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[Discovery] Erro ao ler cache: $e');
+      }
+    }
+
+    // 2. Definir candidatos rápidos a testar em paralelo
+    final List<String> fastCandidates = [
+      'http://localhost:8000',
+      'http://127.0.0.1:8000',
+      'http://10.0.2.2:8000', // Emulador Android
+      'http://192.168.1.97:8000', // Último IP conhecido do host de desenvolvimento
+    ];
+
+    if (kDebugMode) {
+      print('[Discovery] Iniciando sondagem rápida...');
+    }
+
+    String? foundUrl = await _firstSuccessfulProbe(
+      fastCandidates.map((url) => _probeUrl(url)).toList(),
+    );
+
+    if (foundUrl != null) {
+      await _lockAndSaveUrl(foundUrl);
+      return;
+    }
+
+    // 3. Se falhar, e NÃO for web, tentar descobrir a subnet e fazer scan das interfaces locais
+    if (!kIsWeb) {
+      try {
+        if (kDebugMode) {
+          print('[Discovery] Iniciando pesquisa de interfaces de rede locais...');
+        }
+        final interfaces = await NetworkInterface.list(
+          includeLoopback: false,
+          type: InternetAddressType.IPv4,
+        );
+
+        final Set<String> subnetCandidates = {};
+
+        for (var interface in interfaces) {
+          for (var addr in interface.addresses) {
+            final ip = addr.address;
+            if (kDebugMode) {
+              print('[Discovery] Interface encontrada: ${interface.name} - IP: $ip');
+            }
+            // Apenas subredes privadas comuns de classe C ou outras redes locais (192.168.x.x, 10.x.x.x, 172.x.x.x)
+            if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+              final lastDot = ip.lastIndexOf('.');
+              if (lastDot != -1) {
+                final subnet = ip.substring(0, lastDot + 1);
+                
+                // Primeiro, testar o gateway mais provável (.1 e .254)
+                subnetCandidates.add('http://${subnet}1:8000');
+                subnetCandidates.add('http://${subnet}254:8000');
+
+                // Adicionar o restante da rede
+                for (int i = 2; i < 254; i++) {
+                  final parsedLastPart = int.tryParse(ip.substring(lastDot + 1));
+                  if (parsedLastPart == null || i != parsedLastPart) {
+                    subnetCandidates.add('http://$subnet$i:8000');
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Remover os candidatos rápidos já testados para não repetir
+        subnetCandidates.removeAll(fastCandidates);
+
+        if (subnetCandidates.isNotEmpty) {
+          final candidateList = subnetCandidates.toList();
+          if (kDebugMode) {
+            print('[Discovery] Total de candidatos de subrede gerados: ${candidateList.length}');
+            print('[Discovery] Iniciando scan da subrede em blocos...');
+          }
+
+          // Executar sondagem concorrente em lotes de 50 para evitar sobrecarga
+          const batchSize = 50;
+          for (int i = 0; i < candidateList.length; i += batchSize) {
+            final end = (i + batchSize < candidateList.length) ? i + batchSize : candidateList.length;
+            final batch = candidateList.sublist(i, end);
+            
+            if (kDebugMode) {
+              print('[Discovery] Sondando lote de IPs: $i a $end...');
+            }
+
+            final result = await _firstSuccessfulProbe(
+              batch.map((url) => _probeUrl(url)).toList(),
+            );
+
+            if (result != null) {
+              await _lockAndSaveUrl(result);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('[Discovery] Erro durante o varrimento da rede: $e');
+        }
+      }
+    }
+
+    if (kDebugMode) {
+      print('[Discovery] Nenhum servidor ativo respondendo. Mantendo base URL padrão: $_activeBaseUrl');
+    }
+  }
+
+  static Future<String?> _probeUrl(String url) async {
+    try {
+      final uri = Uri.parse('$url/stops');
+      final response = await http.get(uri).timeout(const Duration(milliseconds: 600));
+      if (response.statusCode == 200) {
+        return url;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<String?> _firstSuccessfulProbe(List<Future<String?>> futures) async {
+    final completer = Completer<String?>();
+    int remaining = futures.length;
+    bool isCompleted = false;
+
+    if (futures.isEmpty) {
+      return null;
+    }
+
+    for (final future in futures) {
+      future.then((result) {
+        if (isCompleted) return;
+        if (result != null) {
+          isCompleted = true;
+          completer.complete(result);
+        } else {
+          remaining--;
+          if (remaining == 0 && !isCompleted) {
+            completer.complete(null);
+          }
+        }
+      }).catchError((_) {
+        if (isCompleted) return;
+        remaining--;
+        if (remaining == 0 && !isCompleted) {
+          completer.complete(null);
+        }
+      });
+    }
+
+    return completer.future;
+  }
+
+  static Future<void> _lockAndSaveUrl(String url) async {
+    _activeBaseUrl = url;
+    if (kDebugMode) {
+      print('[Discovery] Servidor ativo encontrado e bloqueado: $_activeBaseUrl');
+    }
+    try {
+      await _storage.write(key: 'active_backend_url', value: url);
+    } catch (e) {
+      if (kDebugMode) {
+        print('[Discovery] Erro ao gravar URL no secure storage: $e');
+      }
+    }
   }
 
   static Future<Map<String, dynamic>> register(String firstName, String lastName, String email, String password, String? phoneNumber, String? profilePicture) async {

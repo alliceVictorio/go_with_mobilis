@@ -14,6 +14,9 @@ import 'linha1_schedule_screen.dart';
 import 'linha2_schedule_screen.dart';
 import 'linha9_schedule_screen.dart';
 import 'favorites_screen.dart';
+import '../services/translation_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 
 class PassengerMapScreen extends StatefulWidget {
   const PassengerMapScreen({super.key});
@@ -39,6 +42,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   LatLng? _lastFetchLocation;
   
   bool _isNavigating = false;
+  bool _isTripStarted = false;
+  final Set<String> _passedStopIds = {};
   LatLng? _destinationPoint;
   dynamic _boardingStop;
   dynamic _alightingStop;
@@ -57,6 +62,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   LatLng? _originPoint;
   List<dynamic> _allStops = [];
   bool _showNearbyStops = false;
+  dynamic _selectedSearchStop;
   static bool _hasShownAlertPopup = false;
 
   @override
@@ -174,10 +180,14 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         if (_isNavigating && _alightingStop != null) {
            _mapController.move(newLoc, 16.0);
            
-           final destLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
-           final dist = const Distance().as(LengthUnit.Meter, newLoc, destLoc);
-           if (dist < 50) {
-              _finishNavigation();
+           if (_isTripStarted) {
+             _checkStopProximity(newLoc);
+             
+             final destLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
+             final dist = const Distance().as(LengthUnit.Meter, newLoc, destLoc);
+             if (dist < 50) {
+                _finishNavigation();
+             }
            }
         } else {
            if (_lastFetchLocation != null) {
@@ -195,6 +205,58 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     } catch (e) {
       _fallbackToDefaultLocation();
     }
+  }
+
+  void _checkStopProximity(LatLng currentLoc) {
+    if (!_isNavigating || !_isTripStarted || _routePlanData == null) return;
+
+    final boarding = _routePlanData!['boarding_stop'];
+    final alighting = _routePlanData!['alighting_stop'];
+    final interStops = _routePlanData!['intermediate_stops'] as List<dynamic>? ?? [];
+
+    void checkAndMark(dynamic stop) {
+      if (stop == null) return;
+      final stopId = stop['id'].toString();
+      if (_passedStopIds.contains(stopId)) return;
+
+      final double lat = (stop['lat'] as num).toDouble();
+      final double lon = (stop['lon'] as num).toDouble();
+      final stopLoc = LatLng(lat, lon);
+      final dist = const Distance().as(LengthUnit.Meter, currentLoc, stopLoc);
+
+      if (dist < 50) {
+        setState(() {
+          _passedStopIds.add(stopId);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.greenAccent),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${t('passed_stop_msg')}: ${stop['name']}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF156A40),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    }
+
+    checkAndMark(boarding);
+    for (final stop in interStops) {
+      checkAndMark(stop);
+    }
+    checkAndMark(alighting);
   }
 
   void _fallbackToDefaultLocation() {
@@ -221,6 +283,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     if (!mounted) return;
     setState(() {
       _isNavigating = false;
+      _isTripStarted = false;
+      _passedStopIds.clear();
       _destinationPoint = null;
       _originPoint = null;
       _boardingStop = null;
@@ -232,6 +296,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _isSearchExpanded = false;
       _routeOptions = null;
       _isRouteExpanded = false;
+      _selectedSearchStop = null;
     });
     
     showDialog(
@@ -293,10 +358,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _isLoading = false;
         _destinationPoint = dest;
         _originPoint = customOrigin ?? _currentLocation;
-      _routeOptions = responseData; // Guarda as opções
-      _routePlanData = null; // Espera a escolha do utilizador
-      _isRouteExpanded = false;
-      _navPolylines.clear();
+        _routeOptions = responseData; // Guarda as opções
+        _routePlanData = null; // Espera a escolha do utilizador
+        _isRouteExpanded = false;
+        _navPolylines.clear();
+        _selectedSearchStop = null;
       });
       _mapController.move(_originPoint!, 13.0);
     }
@@ -314,6 +380,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     if (diffMins < 0) diffMins = 0; 
 
     setState(() {
+      _isTripStarted = false;
+      _passedStopIds.clear();
       _boardingStop = routePlan['boarding_stop'];
       _alightingStop = routePlan['alighting_stop'];
       _routePlanData = routePlan;
@@ -396,6 +464,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     final interStops = _routePlanData!['intermediate_stops'] as List<dynamic>? ?? [];
     final routeColor = _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF0054A6);
 
+    final boardingPassed = _boardingStop != null && _passedStopIds.contains(_boardingStop['id'].toString());
+    final alightingPassed = _alightingStop != null && _passedStopIds.contains(_alightingStop['id'].toString());
+
     return Padding(
       padding: const EdgeInsets.only(left: 8.0),
       child: Row(
@@ -403,14 +474,22 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         children: [
           Column(
             children: [
-              Icon(Icons.circle, color: routeColor, size: 16),
+              Icon(
+                boardingPassed ? Icons.check_circle : Icons.circle, 
+                color: boardingPassed ? Colors.green : routeColor, 
+                size: 16
+              ),
               Container(
                 width: 4, 
                 height: _isRouteExpanded ? (interStops.length * 40.0 + 40.0) : 60.0,
                 color: routeColor,
                 margin: const EdgeInsets.symmetric(vertical: 2),
               ),
-              Icon(Icons.circle_outlined, color: routeColor, size: 16),
+              Icon(
+                alightingPassed ? Icons.check_circle : Icons.circle_outlined, 
+                color: alightingPassed ? Colors.green : routeColor, 
+                size: 16
+              ),
               if (_destinationPoint != null && _alightingStop != null && _calculateWalkDist(LatLng(_alightingStop['lat'], _alightingStop['lon']), _destinationPoint!) >= 20)
                 Container(
                   width: 2, height: 20,
@@ -424,7 +503,23 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_boardingStop != null ? _boardingStop['name'] : 'Partida', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _boardingStop != null ? _boardingStop['name'] : t('boarding_label'), 
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 16,
+                          color: boardingPassed ? Colors.green.shade700 : null,
+                          decoration: boardingPassed ? TextDecoration.lineThrough : null,
+                        )
+                      ),
+                    ),
+                    if (boardingPassed)
+                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                  ],
+                ),
                 
                 const SizedBox(height: 8),
                 
@@ -438,21 +533,55 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       children: [
                         Icon(_isRouteExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text("${interStops.length} paragens intermédias", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                        Text("${interStops.length} ${t('intermediate_stops')}", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
                 ),
                 
                 if (_isRouteExpanded)
-                  ...interStops.map((s) => Padding(
-                    padding: const EdgeInsets.only(bottom: 16.0, top: 4.0),
-                    child: Text(s['name'], style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                  )),
+                  ...interStops.map((s) {
+                    final passed = _passedStopIds.contains(s['id'].toString());
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0, top: 4.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              s['name'], 
+                              style: TextStyle(
+                                color: passed ? Colors.green.shade700 : Colors.black87, 
+                                fontSize: 14,
+                                decoration: passed ? TextDecoration.lineThrough : null,
+                              )
+                            ),
+                          ),
+                          if (passed)
+                            const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                        ],
+                      ),
+                    );
+                  }),
                   
                 if (!_isRouteExpanded) const SizedBox(height: 12),
                   
-                Text(_alightingStop != null ? _alightingStop['name'] : 'Chegada', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _alightingStop != null ? _alightingStop['name'] : t('arrival_label'), 
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 16,
+                          color: alightingPassed ? Colors.green.shade700 : null,
+                          decoration: alightingPassed ? TextDecoration.lineThrough : null,
+                        )
+                      ),
+                    ),
+                    if (alightingPassed)
+                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                  ],
+                ),
               ],
             ),
           )
@@ -936,6 +1065,34 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
+
+
+  Widget _buildBottomNavIcon(IconData icon, String label, {VoidCallback? onTap, Color? colorOverride}) {
+    final defaultColor = Theme.of(context).colorScheme.onSurface;
+    final finalColor = colorOverride ?? defaultColor;
+    
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: finalColor, size: 24),
+            const SizedBox(height: 2),
+            Text(
+              label, 
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 9, color: finalColor, fontWeight: FontWeight.w500)
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildNavIcon(IconData icon, String label, {VoidCallback? onTap, Color? colorOverride}) {
     final defaultColor = Theme.of(context).colorScheme.onSurface;
     final finalColor = colorOverride ?? defaultColor;
@@ -998,7 +1155,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             if (!_isGuest)
               ListTile(
                 leading: Icon(Icons.settings, color: Theme.of(context).colorScheme.onSurface),
-                title: Text('Definições da Conta', style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+                title: Text(t('profile_title'), style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
                 onTap: () {
                   Navigator.of(context).pop(); // fecha o drawer primeiro
                   Navigator.of(context).push(
@@ -1010,15 +1167,17 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
               ),
             ListTile(
               leading: Icon(Icons.language, color: Theme.of(context).colorScheme.onSurface),
-              title: Text('Alterar Idioma', style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+              title: Text(t('language_btn'), style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
               onTap: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A alteração de idioma estará disponível em breve!')));
+                final current = TranslationService.currentLanguage;
+                final next = current == 'pt' ? 'en' : 'pt';
+                TranslationService.setLanguage(next);
               },
             ),
             ListTile(
               leading: Icon(Icons.dark_mode, color: Theme.of(context).colorScheme.onSurface),
-              title: Text('Cor (Noturno/Diurno)', style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+              title: Text(t('theme_btn'), style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
               onTap: () {
                 Navigator.of(context).pop();
                 themeNotifier.value = themeNotifier.value == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
@@ -1026,10 +1185,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
             ),
             ListTile(
               leading: Icon(Icons.notifications, color: Theme.of(context).colorScheme.onSurface),
-              title: Text('Notificações', style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+              title: Text(t('notifications_btn'), style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
               onTap: () {
                 Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Definições de notificações estarão disponíveis em breve!')));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t('notif_soon'))));
               },
             ),
           ],
@@ -1048,53 +1207,67 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 ),
       body: Row(
         children: [
-          // 1. BARRA LATERAL FIXA (Navigation Rail Style Screenshot)
-          Container(
-            width: 75,
-            color: Theme.of(context).colorScheme.surface,
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-                IconButton(
-                  icon: Icon(Icons.menu, color: Theme.of(context).colorScheme.onSurface, size: 28),
-                  onPressed: () {
-                    _scaffoldKey.currentState?.openDrawer();
-                  },
-                ),
-                const SizedBox(height: 20),
-                _buildNavIcon(Icons.star, "Favoritos", onTap: () async {
-                  final selectedStop = await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => const FavoritesScreen())
-                  );
-                  if (selectedStop != null) {
-                    _mapController.move(LatLng(selectedStop['lat'], selectedStop['lon']), 16.0);
-                    if (!_stops.any((s) => s['id'] == selectedStop['id'])) {
-                      setState(() { _stops.add(selectedStop); });
+          if (kIsWeb)
+            Container(
+              width: 75,
+              color: Theme.of(context).colorScheme.surface,
+              child: Column(
+                children: [
+                  const SizedBox(height: 40),
+                  IconButton(
+                    icon: Icon(Icons.menu, color: Theme.of(context).colorScheme.onSurface, size: 28),
+                    onPressed: () {
+                      _scaffoldKey.currentState?.openDrawer();
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _buildNavIcon(Icons.star, t('favoritos_label'), onTap: () async {
+                    final selectedStop = await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => const FavoritesScreen())
+                    );
+                    if (selectedStop != null) {
+                      setState(() {
+                        _selectedSearchStop = selectedStop;
+                      });
+                      _mapController.move(LatLng(selectedStop['lat'], selectedStop['lon']), 16.0);
+                      _showStopInfo(selectedStop);
                     }
-                    _showStopInfo(selectedStop);
-                  }
-                }),
-                _buildNavIcon(Icons.notifications_active, "Alertas", onTap: _showAlertsModal),
-                _buildNavIcon(Icons.schedule, "Horários", onTap: _showLinesScheduleModal),
-                const Spacer(),
-                _buildNavIcon(
-                  Icons.logout, 
-                  "Sair", 
-                  colorOverride: Colors.redAccent,
-                  onTap: () async {
-                    const storage = FlutterSecureStorage();
-                    await storage.deleteAll(); // Limpa as credenciais/tokens
-                    if (context.mounted) {
-                      Navigator.of(context).pushReplacementNamed('/login');
+                  }),
+                  _buildNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal),
+                  _buildNavIcon(Icons.schedule, t('horarios_label'), onTap: _showLinesScheduleModal),
+                  _buildNavIcon(
+                    _showNearbyStops ? Icons.location_on : Icons.location_off, 
+                    t('nearby_stops_label'), 
+                    colorOverride: _showNearbyStops ? const Color(0xFF0054A6) : null,
+                    onTap: () {
+                      setState(() {
+                        _showNearbyStops = !_showNearbyStops;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(_showNearbyStops ? t('nearby_stops_visible') : t('nearby_stops_hidden')),
+                          duration: const Duration(seconds: 2),
+                        )
+                      );
                     }
-                  }
-                ),
-                const SizedBox(height: 20),
-              ],
+                  ),
+                  const Spacer(),
+                  _buildNavIcon(
+                    Icons.logout, 
+                    t('logout_label'), 
+                    colorOverride: Colors.redAccent,
+                    onTap: () async {
+                      const storage = FlutterSecureStorage();
+                      await storage.deleteAll();
+                      if (context.mounted) {
+                        Navigator.of(context).pushReplacementNamed('/login');
+                      }
+                    }
+                  ),
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
-          ),
-          
-          // 2. ÁREA DO MAPA com BARRA FLUTUANTE
           Expanded(
             child: Stack(
               children: [
@@ -1106,6 +1279,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     onTap: (tapPosition, point) {
                       if (_isAdmin) {
                         _showAddStopDialog(point);
+                      } else {
+                        setState(() {
+                          _selectedSearchStop = null;
+                        });
                       }
                     },
                     onLongPress: (tapPosition, point) {
@@ -1120,7 +1297,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     PolylineLayer(
                       polylines: _isNavigating ? _navPolylines : _polylines,
                     ),
-                    if (_currentLocation != null || _stops.isNotEmpty || _isNavigating)
+                    if (_currentLocation != null || _stops.isNotEmpty || _isNavigating || _selectedSearchStop != null)
                       MarkerLayer(
                         markers: [
                           if (_currentLocation != null)
@@ -1177,16 +1354,31 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                               width: 40, height: 40,
                               child: const Icon(Icons.location_on, color: Colors.red, size: 40)
                             ),
+                          if (_selectedSearchStop != null)
+                            Marker(
+                              point: LatLng((_selectedSearchStop['lat'] as num).toDouble(), (_selectedSearchStop['lon'] as num).toDouble()),
+                              width: 40,
+                              height: 40,
+                              child: GestureDetector(
+                                onTap: () => _showStopInfo(_selectedSearchStop),
+                                child: const Icon(
+                                  Icons.location_on,
+                                  color: Color(0xFF0054A6), // Mobilis blue
+                                  size: 40,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                   ],
                 ),
       
                 // BARRA DE PESQUISA FLUTUANTE À GOOGLE MAPS + BOTÕES DE ROTAS
-                Positioned(
-                  top: 40,
-                  left: 20,
-                  child: Column(
+                if (!_isNavigating)
+                  Positioned(
+                    top: 40,
+                    left: 20,
+                    child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       AnimatedContainer(
@@ -1257,6 +1449,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                             final matchingStops = _allStops.where((s) => s['name'].toString().toLowerCase().contains(lowerVal)).toList();
                                             if (matchingStops.isNotEmpty) {
                                                 final stop = matchingStops.first;
+                                                setState(() {
+                                                  _selectedSearchStop = stop;
+                                                });
                                                 _mapController.move(LatLng(stop['lat'], stop['lon']), 16.0);
                                                 _showStopInfo(stop);
                                                 FocusScope.of(context).unfocus();
@@ -1364,10 +1559,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                     _searchController.text = stop['name'];
                                     _searchFocusNode.unfocus();
                                     if (!_isSearchExpanded) {
+                                        setState(() {
+                                          _selectedSearchStop = stop;
+                                        });
                                         _mapController.move(LatLng(stop['lat'], stop['lon']), 16.0);
-                                        if (!_stops.any((s) => s['id'] == stop['id'])) {
-                                            setState(() { _stops.add(stop); });
-                                        }
+                                        _showStopInfo(stop);
                                         _searchController.clear();
                                     } else {
                                         setState(() { _isLoading = true; });
@@ -1440,243 +1636,349 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                         backgroundImage: _profileImageBytes != null ? MemoryImage(_profileImageBytes!) : null,
                         child: _profileImageBytes == null ? const Icon(Icons.person, size: 24, color: Color(0xFF0054A6)) : null,
                       ),
+                     ),
                     ),
                   ),
-                ),
-                
-                // BOTÕES DE CONTROLO FLUTUANTES (Canto inferior direito)
                 Positioned(
                   bottom: 24,
                   right: 20,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FloatingActionButton(
-                        heroTag: "btnToggleStops",
-                        backgroundColor: _showNearbyStops ? const Color(0xFF0054A6) : Colors.white,
-                        foregroundColor: _showNearbyStops ? Colors.white : Colors.grey,
-                        onPressed: () {
+                  child: FloatingActionButton(
+                    heroTag: "btnLocation",
+                    backgroundColor: const Color(0xFF156A40),
+                    foregroundColor: Colors.white,
+                    onPressed: () async {
+                      final latLng = await LocationService.getCurrentLocation();
+                      if (latLng != null) {
+                        if (mounted) {
                           setState(() {
-                            _showNearbyStops = !_showNearbyStops;
+                            _currentLocation = latLng;
                           });
+                        }
+                        _mapController.move(latLng, 15.0);
+                      } else {
+                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(_showNearbyStops ? 'Paragens próximas visíveis.' : 'Paragens próximas ocultadas.'),
-                              duration: const Duration(seconds: 2),
-                            )
+                            const SnackBar(content: Text('Não foi possível obter a localização. Confirme as suas permissões.')),
                           );
-                        },
-                        child: Icon(_showNearbyStops ? Icons.location_on : Icons.location_off),
-                      ),
-                      const SizedBox(height: 12),
-                      FloatingActionButton(
-                        heroTag: "btnLocation",
-                        backgroundColor: const Color(0xFF156A40),
-                        foregroundColor: Colors.white,
-                        onPressed: () async {
-                          final latLng = await LocationService.getCurrentLocation();
-                          if (latLng != null) {
-                            if (mounted) {
-                              setState(() {
-                                _currentLocation = latLng;
-                              });
-                            }
-                            _mapController.move(latLng, 15.0);
-                          } else {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Não foi possível obter a localização. Confirme as suas permissões.')),
-                              );
-                            }
-                          }
-                        },
-                        child: const Icon(Icons.my_location),
-                      ),
-                    ],
+                        }
+                      }
+                    },
+                    child: const Icon(Icons.my_location),
                   ),
                 ),
-
-                // PAINEL DE NAVEGAÇÃO INFERIOR E DETALHADO (ESTILO GOOGLE MAPS)
+                
+                // PAINEL DE NAVEGAÇÃO INFERIOR E DETALHADO (ESTILO GOOGLE MAPS / SIDEBAR RESPONSIVO)
                 if (_isNavigating && (_routePlanData != null || _routeOptions != null))
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(32.0)),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 16, offset: Offset(0, -4))]
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // "Puxador" visual
-                            Center(
-                              child: Container(
-                                width: 40, height: 5,
-                                margin: const EdgeInsets.only(bottom: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade300,
-                                  borderRadius: BorderRadius.circular(4)
-                                ),
-                              ),
-                            ),
-                            
-                            if (_routePlanData == null && _routeOptions != null)
-                              ...[
-                                const Text("Opções de Viagem", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 16),
-                                SizedBox(
-                                  height: 250,
-                                  child: ListView.separated(
-                                    itemCount: _routeOptions!.length,
-                                    separatorBuilder: (ctx, idx) => const Divider(),
-                                    itemBuilder: (ctx, index) {
-                                      final option = _routeOptions![index];
-                                      
-                                      final arrTimeStr = option['arrival_time'].toString();
-                                      final parts = arrTimeStr.split(':');
-                                      final now = DateTime.now();
-                                      final arrDate = DateTime(now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-                                      int diffMins = arrDate.difference(now).inMinutes;
-                                      if (diffMins < 0) diffMins = 0;
-                                      
-                                      Color routeColor = const Color(0xFF0054A6);
-                                      if (option['route_color'] != null) {
-                                        String hexColor = option['route_color'].toString();
-                                        if (hexColor.startsWith('#')) hexColor = hexColor.substring(1);
-                                        try { routeColor = Color(int.parse('0xFF$hexColor')); } catch (_) {}
-                                      }
-
-                                      return ListTile(
-                                        contentPadding: EdgeInsets.zero,
-                                        leading: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: routeColor,
-                                            borderRadius: BorderRadius.circular(8)
-                                          ),
-                                          child: const Icon(Icons.directions_bus, color: Colors.white)
-                                        ),
-                                        title: Text(option['route_name'] ?? 'Linha', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                        subtitle: Text("⏱️ ${option['total_time_mins'] ?? diffMins} min totais de viagem\nPróximo autocarro às ${option['arrival_time']}"),
-                                        isThreeLine: true,
-                                        trailing: const Icon(Icons.chevron_right),
-                                        onTap: () => _selectRouteOption(option),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ]
-                            else if (_routePlanData != null)
-                              ...[
-                            // Tempo e Informação da Linha
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Builder(
+                    builder: (context) {
+                      final bool isWide = MediaQuery.of(context).size.width > 768;
+                      
+                      return Positioned(
+                        top: isWide ? 16 : null,
+                        bottom: isWide ? 16 : 0,
+                        left: isWide ? 16 : 0,
+                        right: isWide ? null : 0,
+                        width: isWide ? 380 : null,
+                        child: Container(
+                          padding: isWide ? const EdgeInsets.all(24) : const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: isWide 
+                                ? BorderRadius.circular(24.0) 
+                                : const BorderRadius.vertical(top: Radius.circular(32.0)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26, 
+                                blurRadius: 16, 
+                                offset: Offset(0, -4)
+                              )
+                            ]
+                          ),
+                          child: SafeArea(
+                            child: Column(
+                              mainAxisSize: isWide ? MainAxisSize.max : MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _navWaitTime.replaceAll("Próximo autocarro em ", ""),
-                                        style: TextStyle(fontSize: 32, color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF156A40), fontWeight: FontWeight.w900, letterSpacing: -0.5)
+                                // "Puxador" visual apenas para telemóveis
+                                if (!isWide)
+                                  Center(
+                                    child: Container(
+                                      width: 40, 
+                                      height: 5,
+                                      margin: const EdgeInsets.only(bottom: 16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade300,
+                                        borderRadius: BorderRadius.circular(4)
                                       ),
-                                      const Text("Tempo de espera", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                                    ],
+                                    ),
                                   ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF0054A6),
-                                    borderRadius: BorderRadius.circular(12)
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.directions_bus, color: Colors.white, size: 20),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _routePlanData!['route_name'] ?? 'Mobilis', 
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              ],
-                            ),
-                            
-                            const Divider(height: 32),
-                            
-                            const Divider(height: 32),
-                            
-                            // Rota Detalhada (Timeline Expansível)
-                            ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxHeight: MediaQuery.of(context).size.height * 0.45
-                              ),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // 1. Caminhada inicial
-                                    if (_originPoint != null && _boardingStop != null)
-                                      _buildWalkSegment(
-                                        _originController.text.trim().toLowerCase() == "a minha localização" || _originController.text.trim().isEmpty ? "A sua localização" : _originController.text,
-                                        _originPoint!,
-                                        LatLng(_boardingStop['lat'], _boardingStop['lon']),
-                                        isStart: true
-                                      ),
-                                      
-                                    // 2. Autocarro
-                                    _buildBusSegment(),
+                                
+                                if (_routePlanData == null && _routeOptions != null) ...[
+                                  const Text("Opções de Viagem", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 16),
+                                  (() {
+                                    final listView = ListView.separated(
+                                      itemCount: _routeOptions!.length,
+                                      separatorBuilder: (ctx, idx) => const Divider(),
+                                      itemBuilder: (ctx, index) {
+                                        final option = _routeOptions![index];
+                                        
+                                        final arrTimeStr = option['arrival_time'].toString();
+                                        final parts = arrTimeStr.split(':');
+                                        final now = DateTime.now();
+                                        final arrDate = DateTime(now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+                                        int diffMins = arrDate.difference(now).inMinutes;
+                                        if (diffMins < 0) diffMins = 0;
+                                        
+                                        Color routeColor = const Color(0xFF0054A6);
+                                        if (option['route_color'] != null) {
+                                          String hexColor = option['route_color'].toString();
+                                          if (hexColor.startsWith('#')) hexColor = hexColor.substring(1);
+                                          try { routeColor = Color(int.parse('0xFF$hexColor')); } catch (_) {}
+                                        }
+
+                                        return ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: routeColor,
+                                              borderRadius: BorderRadius.circular(8)
+                                            ),
+                                            child: const Icon(Icons.directions_bus, color: Colors.white)
+                                          ),
+                                          title: Text(option['route_name'] ?? 'Linha', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                          subtitle: Text("⏱️ ${option['total_time_mins'] ?? diffMins} min totais de viagem\nPróximo autocarro às ${option['arrival_time']}"),
+                                          isThreeLine: true,
+                                          trailing: const Icon(Icons.chevron_right),
+                                          onTap: () => _selectRouteOption(option),
+                                        );
+                                      },
+                                    );
                                     
-                                    // 3. Caminhada final
-                                    if (_destinationPoint != null && _alightingStop != null)
-                                      _buildWalkSegment(
-                                        _alightingStop['name'],
-                                        LatLng(_alightingStop['lat'], _alightingStop['lon']),
-                                        _destinationPoint!,
-                                        isStart: false
+                                    return isWide 
+                                        ? Expanded(child: listView)
+                                        : SizedBox(height: 250, child: listView);
+                                  })(),
+                                ]
+                                else if (_routePlanData != null) ...[
+                                  // Tempo e Informação da Linha
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _navWaitTime.replaceAll("Próximo autocarro em ", ""),
+                                              style: TextStyle(
+                                                fontSize: 32, 
+                                                color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF156A40), 
+                                                fontWeight: FontWeight.w900, 
+                                                letterSpacing: -0.5
+                                              )
+                                            ),
+                                            const Text("Tempo de espera", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                          ],
+                                        ),
                                       ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF0054A6),
+                                          borderRadius: BorderRadius.circular(12)
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.directions_bus, color: Colors.white, size: 20),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _routePlanData!['route_name'] ?? 'Mobilis', 
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    ],
+                                  ),
+                                  
+                                  const Divider(height: 32),
+                                  
+                                  // Rota Detalhada (Timeline Expansível)
+                                  (() {
+                                    final timelineWidget = SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // 1. Caminhada inicial
+                                          if (_originPoint != null && _boardingStop != null)
+                                            _buildWalkSegment(
+                                              _originController.text.trim().toLowerCase() == "a minha localização" || _originController.text.trim().isEmpty ? "A sua localização" : _originController.text,
+                                              _originPoint!,
+                                              LatLng(_boardingStop['lat'], _boardingStop['lon']),
+                                              isStart: true
+                                            ),
+                                            
+                                          // 2. Autocarro
+                                          _buildBusSegment(),
+                                          
+                                          // 3. Caminhada final
+                                          if (_destinationPoint != null && _alightingStop != null)
+                                            _buildWalkSegment(
+                                              _alightingStop['name'],
+                                              LatLng(_alightingStop['lat'], _alightingStop['lon']),
+                                              _destinationPoint!,
+                                              isStart: false
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                    
+                                    return isWide 
+                                        ? Expanded(child: timelineWidget)
+                                        : ConstrainedBox(
+                                            constraints: BoxConstraints(
+                                              maxHeight: MediaQuery.of(context).size.height * 0.45
+                                            ),
+                                            child: timelineWidget,
+                                          );
+                                  })(),
+                                  
+                                  const SizedBox(height: 24),
+                                  if (!_isTripStarted)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _isTripStarted = true;
+                                          });
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(t('trip_started_msg')),
+                                              backgroundColor: const Color(0xFF156A40),
+                                            ),
+                                          );
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF156A40), 
+                                          foregroundColor: Colors.white, 
+                                          elevation: 2,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                          padding: const EdgeInsets.symmetric(vertical: 16)
+                                        ),
+                                        child: Text(t('start_trip_btn'), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 13))
+                                      ),
+                                    )
+                                  else
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _isNavigating = false;
+                                            _isTripStarted = false;
+                                            _passedStopIds.clear();
+                                            _navPolylines.clear();
+                                            _searchController.clear();
+                                            _originController.text = "A minha localização";
+                                            _isSearchExpanded = false;
+                                            _originPoint = null;
+                                            _routePlanData = null;
+                                            _routeOptions = null;
+                                            _isRouteExpanded = false;
+                                            _selectedSearchStop = null;
+                                          });
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200, 
+                                          foregroundColor: Colors.redAccent, 
+                                          elevation: 0,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                          padding: const EdgeInsets.symmetric(vertical: 16)
+                                        ),
+                                        child: Text(t('cancel_trip_btn'), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 13))
+                                      ),
+                                    ),
+                                ],
                               ],
-                            
-                            const SizedBox(height: 24),
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    setState(() { _isNavigating = false; _navPolylines.clear(); _searchController.clear(); _originController.text = "A minha localização"; _isSearchExpanded = false; _originPoint = null; _routePlanData = null; _routeOptions = null; _isRouteExpanded = false; });
-                                  },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200, 
-                                  foregroundColor: Colors.redAccent, 
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                  padding: const EdgeInsets.symmetric(vertical: 16)
-                                ),
-                                child: const Text('CANCELAR VIAGEM', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.0))
-                              ),
-                            )
-                          ]
-                        )
-                      )
-                    )
+                            ),
+                          ),
+                        ),
+                      );
+                    }
                   )
               ],
             ),
           ),
         ],
       ),
-    );
+        bottomNavigationBar: kIsWeb ? null : Container(
+          height: 70,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildBottomNavIcon(Icons.menu, t('menu_label'), onTap: () {
+                  _scaffoldKey.currentState?.openDrawer();
+                }),
+                _buildBottomNavIcon(Icons.star, t('favoritos_label'), onTap: () async {
+                  final selectedStop = await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const FavoritesScreen())
+                  );
+                  if (selectedStop != null) {
+                    setState(() {
+                      _selectedSearchStop = selectedStop;
+                    });
+                    _mapController.move(LatLng(selectedStop['lat'], selectedStop['lon']), 16.0);
+                    _showStopInfo(selectedStop);
+                  }
+                }),
+                _buildBottomNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal),
+                _buildBottomNavIcon(Icons.schedule, t('horarios_label'), onTap: _showLinesScheduleModal),
+                _buildBottomNavIcon(
+                  _showNearbyStops ? Icons.location_on : Icons.location_off, 
+                  t('nearby_stops_label'), 
+                  colorOverride: _showNearbyStops ? const Color(0xFF0054A6) : null,
+                  onTap: () {
+                    setState(() {
+                      _showNearbyStops = !_showNearbyStops;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(_showNearbyStops ? t('nearby_stops_visible') : t('nearby_stops_hidden')),
+                        duration: const Duration(seconds: 2),
+                      )
+                    );
+                  }
+                ),
+                _buildBottomNavIcon(
+                  Icons.logout, 
+                  t('logout_label'), 
+                  colorOverride: Colors.redAccent,
+                  onTap: () async {
+                    const storage = FlutterSecureStorage();
+                    await storage.deleteAll();
+                    if (context.mounted) {
+                      Navigator.of(context).pushReplacementNamed('/login');
+                    }
+                  }
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
   }
 }
