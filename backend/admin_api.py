@@ -101,7 +101,7 @@ def create_route(route: schemas.RouteCreate, db: Session = Depends(database.get_
     if db.query(models.Route).filter(models.Route.id == route.id).first():
         raise HTTPException(status_code=400, detail="ID da linha já existe")
     
-    new_route = models.Route(id=route.id, short_name=route.short_name, long_name=route.long_name, color=route.color)
+    new_route = models.Route(id=route.id, short_name=route.short_name, long_name=route.long_name, color=route.color, is_active=getattr(route, 'is_active', True))
     db.add(new_route)
     db.commit()
     db.refresh(new_route)
@@ -116,6 +116,7 @@ def update_route(route_id: str, route: schemas.RouteUpdate, db: Session = Depend
     if route.short_name is not None: db_route.short_name = route.short_name
     if route.long_name is not None: db_route.long_name = route.long_name
     if route.color is not None: db_route.color = route.color
+    if route.is_active is not None: db_route.is_active = route.is_active
     
     db.commit()
     db.refresh(db_route)

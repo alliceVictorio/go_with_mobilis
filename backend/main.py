@@ -13,6 +13,15 @@ from sqlalchemy import cast, Time
 
 # 1. Inicializar a App e Base de Dados
 models.Base.metadata.create_all(bind=database.engine)
+
+from sqlalchemy import text
+try:
+    with database.engine.connect() as conn:
+        conn.execute(text("ALTER TABLE routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"))
+        conn.commit()
+except Exception as e:
+    print(f"Erro ao adicionar coluna is_active à tabela routes: {e}")
+
 app = FastAPI(title="Go with Mobilis API")
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -231,6 +240,7 @@ def get_stop_upcoming_buses(stop_id: str, db: Session = Depends(database.get_db)
     for rid, (arr_time, diff_sec) in route_best_arrival.items():
         route = db.query(models.Route).filter(models.Route.id == rid).first()
         if not route: continue
+        if not getattr(route, 'is_active', True): continue
         r_name = f"Linha {route.short_name}" if route.short_name else (route.long_name or "Linha")
         r_color = route.color if route.color else "0054A6"
         if not r_color.startswith("#"): r_color = f"#{r_color}"
@@ -257,6 +267,7 @@ def get_stop_routes(stop_id: str, db: Session = Depends(database.get_db)):
                .join(models.StopTime, models.StopTime.trip_id == models.Trip.id)\
                .join(models.Stop, models.Stop.id == models.StopTime.stop_id)\
                .filter(models.Stop.name == target_stop.name)\
+               .filter(models.Route.is_active == True)\
                .distinct().all()
     
     # Optional: order by short_name as integer if possible
@@ -293,7 +304,7 @@ def create_stop(
 
 @app.get("/routes", response_model=List[schemas.RouteResponse])
 def get_routes(db: Session = Depends(database.get_db)):
-    return db.query(models.Route).all()
+    return db.query(models.Route).filter(models.Route.is_active == True).all()
 
 @app.get("/routes/{route_id}/shape", response_model=schemas.ShapeResponse)
 def get_route_shape(route_id: str, db: Session = Depends(database.get_db)):
@@ -537,7 +548,9 @@ def get_navigation_route(
     valid_trips = db.query(st1.trip_id, st1.stop_id.label('o_stop'), st2.stop_id.label('d_stop'), st1.arrival_time, st2.arrival_time.label('alighting_time')) \
         .join(st2, st1.trip_id == st2.trip_id) \
         .join(trip_alias, trip_alias.id == st1.trip_id) \
+        .join(models.Route, models.Route.id == trip_alias.route_id) \
         .join(cal_alias, cal_alias.service_id == trip_alias.service_id) \
+        .filter(models.Route.is_active == True) \
         .filter(st1.stop_id.in_(origin_ids)) \
         .filter(st2.stop_id.in_(dest_ids)) \
         .filter(st1.stop_sequence < st2.stop_sequence) \

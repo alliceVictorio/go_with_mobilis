@@ -9,6 +9,7 @@ import 'dart:io' show NetworkInterface, InternetAddressType;
 class ApiService {
   static const _storage = FlutterSecureStorage();
   static String _activeBaseUrl = 'https://go-with-mobilis-backend.onrender.com';
+  static List<dynamic>? _cachedStops;
 
   // Obtém o URL ativo descoberto dinamicamente
   static String get baseUrl => _activeBaseUrl;
@@ -263,19 +264,41 @@ class ApiService {
     }
   }
 
-  static Future<List<dynamic>> getStops() async {
+  static Future<List<dynamic>> getStops({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedStops != null && _cachedStops!.isNotEmpty) {
+      return _cachedStops!;
+    }
+
+    if (_cachedStops == null || _cachedStops!.isEmpty) {
+      try {
+        final localJson = await _storage.read(key: 'cached_stops');
+        if (localJson != null && localJson.isNotEmpty) {
+          _cachedStops = jsonDecode(localJson);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Erro ao ler paragens em cache persistida: $e');
+        }
+      }
+    }
+
     final url = Uri.parse('$baseUrl/stops');
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+        final decoded = jsonDecode(response.body);
+        if (decoded is List && decoded.isNotEmpty) {
+          _cachedStops = decoded;
+          _storage.write(key: 'cached_stops', value: response.body).catchError((_) => null);
+          return _cachedStops!;
+        }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Erro ao obter paragens: $e');
+        print('Erro ao obter paragens remotamente: $e');
       }
     }
-    return [];
+    return _cachedStops ?? [];
   }
 
   static Future<List<dynamic>> getNearbyStops(double lat, double lon) async {
@@ -411,6 +434,23 @@ class ApiService {
       }
     } catch (e) {
       if (kDebugMode) print('Erro ao obter linhas: $e');
+    }
+    return [];
+  }
+
+  static Future<List<dynamic>> getAdminRoutes() async {
+    final url = Uri.parse('$baseUrl/admin/routes');
+    try {
+      final token = await _storage.read(key: 'access_token');
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Erro ao obter linhas de admin: $e');
     }
     return [];
   }

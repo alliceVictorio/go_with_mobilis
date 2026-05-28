@@ -15,7 +15,6 @@ import 'linha2_schedule_screen.dart';
 import 'linha9_schedule_screen.dart';
 import 'favorites_screen.dart';
 import '../services/translation_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 
 class PassengerMapScreen extends StatefulWidget {
@@ -63,7 +62,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   List<dynamic> _allStops = [];
   bool _showNearbyStops = false;
   dynamic _selectedSearchStop;
-  static bool _hasShownAlertPopup = false;
+  bool _hasShownAlertPopup = false;
+
+  LatLng? _searchedPlaceLocation;
+  String? _searchedPlaceName;
+  List<dynamic> _closestStopsToSearchedPlace = [];
+  int _alertBadgeCount = 0;
 
   @override
   void initState() {
@@ -101,6 +105,90 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
+  Future<void> _searchPlace(String value) async {
+    if (value.trim().isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final lowerVal = value.trim().toLowerCase();
+    
+    // 1. Tentar encontrar correspondência exata de paragem (por precaução)
+    final matchingStops = _allStops.where((s) => s['name'].toString().toLowerCase() == lowerVal).toList();
+    if (matchingStops.isNotEmpty) {
+      final stop = matchingStops.first;
+      setState(() {
+        _isLoading = false;
+        _searchedPlaceLocation = null;
+        _searchedPlaceName = null;
+        _closestStopsToSearchedPlace = [];
+        _selectedSearchStop = stop;
+      });
+      _mapController.move(LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()), 16.0);
+      _showStopInfo(stop);
+      _searchController.clear();
+      FocusScope.of(context).unfocus();
+      return;
+    }
+
+    // 2. Geocodificar o local pesquisado
+    final LatLng? placePt = await ApiService.geocodeAddress(value);
+    if (!mounted) return;
+    
+    if (placePt == null) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Local ou paragem não encontrado.')),
+        );
+      }
+      return;
+    }
+
+    // 3. Encontrar as paragens mais próximas
+    if (_allStops.isNotEmpty) {
+      List<Map<String, dynamic>> sortedStops = _allStops.map((s) {
+        final stopPt = LatLng((s['lat'] as num).toDouble(), (s['lon'] as num).toDouble());
+        final dist = const Distance().as(LengthUnit.Meter, placePt, stopPt);
+        return {
+          'stop': s as Map<String, dynamic>,
+          'distance': dist,
+        };
+      }).toList();
+
+      sortedStops.sort((a, b) => (a['distance'] as num).compareTo(b['distance'] as num));
+
+      final List<dynamic> closestStops = sortedStops.take(3).map((e) => e['stop']).toList();
+      final closestStop = closestStops.first;
+
+      setState(() {
+        _isLoading = false;
+        _searchedPlaceLocation = placePt;
+        _searchedPlaceName = value;
+        _closestStopsToSearchedPlace = closestStops;
+        _selectedSearchStop = closestStop;
+      });
+
+      _mapController.move(placePt, 16.0);
+      _showStopInfo(closestStop);
+    } else {
+      setState(() {
+        _isLoading = false;
+        _searchedPlaceLocation = placePt;
+        _searchedPlaceName = value;
+        _closestStopsToSearchedPlace = [];
+        _selectedSearchStop = null;
+      });
+      _mapController.move(placePt, 16.0);
+    }
+
+    _searchController.clear();
+    FocusScope.of(context).unfocus();
+  }
+
   void _onOriginChanged() {
     if (!_originFocusNode.hasFocus || _originController.text.isEmpty || _originController.text.toLowerCase() == "a minha localização") {
       if (_originSearchResults.isNotEmpty && mounted) setState(() => _originSearchResults = []);
@@ -113,11 +201,32 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   void _fetchAllStops() async {
-    final stops = await ApiService.getStops();
-    if (mounted) {
-      setState(() {
-        _allStops = stops;
-      });
+    try {
+      final stops = await ApiService.getStops();
+      if (mounted) {
+        setState(() {
+          _allStops = stops;
+        });
+        if (stops.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sem ligação ao servidor. Nenhuma paragem em cache local.'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Modo offline: utilizando dados em cache.'),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -297,6 +406,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _routeOptions = null;
       _isRouteExpanded = false;
       _selectedSearchStop = null;
+      _searchedPlaceLocation = null;
+      _searchedPlaceName = null;
+      _closestStopsToSearchedPlace = [];
     });
     
     showDialog(
@@ -363,6 +475,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         _isRouteExpanded = false;
         _navPolylines.clear();
         _selectedSearchStop = null;
+        _searchedPlaceLocation = null;
+        _searchedPlaceName = null;
+        _closestStopsToSearchedPlace = [];
       });
       _mapController.move(_originPoint!, 13.0);
     }
@@ -628,46 +743,128 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   Future<void> _checkAlertsPopup() async {
+    final alerts = await ApiService.getActiveAlerts();
+    if (!mounted) return;
+
+    const storage = FlutterSecureStorage();
+    final dismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
+    final dismissedIds = dismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+    // Filtramos os alertas que o utilizador ainda não viu para definir o badgeCount
+    final unreadAlerts = alerts.where((alert) {
+      final alertId = alert['id'].toString();
+      return !dismissedIds.contains(alertId);
+    }).toList();
+
+    setState(() {
+      _alertBadgeCount = unreadAlerts.length;
+    });
+
     if (_hasShownAlertPopup) return;
+
+    final nowUtc = DateTime.now().toUtc();
+    final List<dynamic> recentAlerts = [];
+
+    DateTime parseDateTime(String dateStr) {
+      try {
+        if (!dateStr.contains('Z') && !dateStr.contains('+') && !dateStr.contains('-')) {
+          final formatted = dateStr.replaceAll(' ', 'T');
+          return DateTime.parse('${formatted}Z');
+        }
+        return DateTime.parse(dateStr);
+      } catch (_) {
+        return DateTime.parse(dateStr);
+      }
+    }
+
+    for (var alert in alerts) {
+      if (alert['created_at'] != null) {
+        try {
+          final createdAt = parseDateTime(alert['created_at'].toString());
+          final createdAtUtc = createdAt.toUtc();
+          final diffMins = nowUtc.difference(createdAtUtc).inMinutes;
+          
+          if (diffMins.abs() <= 30) {
+            recentAlerts.add(alert);
+          }
+        } catch (_) {
+          recentAlerts.add(alert);
+        }
+      } else {
+        recentAlerts.add(alert);
+      }
+    }
+
+    if (recentAlerts.isEmpty) {
+      _hasShownAlertPopup = true;
+      return;
+    }
+
+
+
+    final List<dynamic> alertsToShow = recentAlerts.where((alert) {
+      final alertId = alert['id'].toString();
+      return !dismissedIds.contains(alertId);
+    }).toList();
+
+    if (alertsToShow.isEmpty) {
+      _hasShownAlertPopup = true;
+      return;
+    }
+
     _hasShownAlertPopup = true;
 
-    final alerts = await ApiService.getActiveAlerts();
-    if (alerts.isNotEmpty && mounted) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Row(
-            children: const [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-              SizedBox(width: 8),
-              Text('Aviso Importante'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: alerts.map<Widget>((alert) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Text(
-                    alert['message'] ?? '',
-                    style: const TextStyle(fontSize: 15),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Compreendi'),
-            )
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            SizedBox(width: 8),
+            Text('Aviso Importante'),
           ],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
-      );
-    }
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: alertsToShow.map<Widget>((alert) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Text(
+                  alert['message'] ?? '',
+                  style: const TextStyle(fontSize: 15),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final currentDismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
+              final currentDismissedList = currentDismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+              for (var alert in alertsToShow) {
+                final idStr = alert['id'].toString();
+                if (!currentDismissedList.contains(idStr)) {
+                  currentDismissedList.add(idStr);
+                }
+              }
+              await storage.write(key: 'dismissed_alert_ids', value: currentDismissedList.join(','));
+              setState(() {
+                _alertBadgeCount = 0;
+              });
+            },
+            child: const Text('Compreendi'),
+          )
+        ],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+    );
   }
 
   Future<void> _loadRouteShape(String routeId, Color routeColor) async {
@@ -900,7 +1097,31 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  void _showAlertsModal() {
+  void _showAlertsModal() async {
+    setState(() {
+      _alertBadgeCount = 0;
+    });
+
+    try {
+      final alerts = await ApiService.getActiveAlerts();
+      const storage = FlutterSecureStorage();
+      final currentDismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
+      final currentDismissedList = currentDismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      bool changed = false;
+      for (var alert in alerts) {
+        final idStr = alert['id'].toString();
+        if (!currentDismissedList.contains(idStr)) {
+          currentDismissedList.add(idStr);
+          changed = true;
+        }
+      }
+      if (changed) {
+        await storage.write(key: 'dismissed_alert_ids', value: currentDismissedList.join(','));
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1067,7 +1288,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
 
 
-  Widget _buildBottomNavIcon(IconData icon, String label, {VoidCallback? onTap, Color? colorOverride}) {
+  Widget _buildBottomNavIcon(IconData icon, String label, {VoidCallback? onTap, Color? colorOverride, int badgeCount = 0}) {
     final defaultColor = Theme.of(context).colorScheme.onSurface;
     final finalColor = colorOverride ?? defaultColor;
     
@@ -1078,7 +1299,18 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: finalColor, size: 24),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, color: finalColor, size: 24),
+                if (badgeCount > 0)
+                  Positioned(
+                    right: -8,
+                    top: -8,
+                    child: PulsingBadge(count: badgeCount),
+                  ),
+              ],
+            ),
             const SizedBox(height: 2),
             Text(
               label, 
@@ -1093,7 +1325,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
-  Widget _buildNavIcon(IconData icon, String label, {VoidCallback? onTap, Color? colorOverride}) {
+  Widget _buildNavIcon(IconData icon, String label, {VoidCallback? onTap, Color? colorOverride, int badgeCount = 0}) {
     final defaultColor = Theme.of(context).colorScheme.onSurface;
     final finalColor = colorOverride ?? defaultColor;
     
@@ -1104,7 +1336,18 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: finalColor, size: 28),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, color: finalColor, size: 28),
+                if (badgeCount > 0)
+                  Positioned(
+                    right: -8,
+                    top: -8,
+                    child: PulsingBadge(count: badgeCount),
+                  ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
               label, 
@@ -1122,6 +1365,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
+    final bool isWide = MediaQuery.of(context).size.width > 768;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -1207,7 +1452,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 ),
       body: Row(
         children: [
-          if (kIsWeb)
+          if (isWide)
             Container(
               width: 75,
               color: Theme.of(context).colorScheme.surface,
@@ -1233,7 +1478,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       _showStopInfo(selectedStop);
                     }
                   }),
-                  _buildNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal),
+                  _buildNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal, badgeCount: _alertBadgeCount),
                   _buildNavIcon(Icons.schedule, t('horarios_label'), onTap: _showLinesScheduleModal),
                   _buildNavIcon(
                     _showNearbyStops ? Icons.location_on : Icons.location_off, 
@@ -1282,6 +1527,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       } else {
                         setState(() {
                           _selectedSearchStop = null;
+                          _searchedPlaceLocation = null;
+                          _searchedPlaceName = null;
+                          _closestStopsToSearchedPlace = [];
                         });
                       }
                     },
@@ -1291,13 +1539,15 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: Theme.of(context).brightness == Brightness.dark
+                          ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                          : 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.mobilis.app',
                     ),
                     PolylineLayer(
                       polylines: _isNavigating ? _navPolylines : _polylines,
                     ),
-                    if (_currentLocation != null || _stops.isNotEmpty || _isNavigating || _selectedSearchStop != null)
+                    if (_currentLocation != null || _stops.isNotEmpty || _isNavigating || _selectedSearchStop != null || _searchedPlaceLocation != null)
                       MarkerLayer(
                         markers: [
                           if (_currentLocation != null)
@@ -1368,6 +1618,37 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                 ),
                               ),
                             ),
+                          if (_searchedPlaceLocation != null)
+                            Marker(
+                              point: _searchedPlaceLocation!,
+                              width: 45,
+                              height: 45,
+                              child: Tooltip(
+                                message: _searchedPlaceName ?? "Local Pesquisado",
+                                child: const Icon(
+                                  Icons.location_pin,
+                                  color: Colors.redAccent,
+                                  size: 45,
+                                ),
+                              ),
+                            ),
+                          if (_searchedPlaceLocation != null)
+                            ..._closestStopsToSearchedPlace.map((stop) {
+                              final isSelected = _selectedSearchStop != null && _selectedSearchStop['id'].toString() == stop['id'].toString();
+                              return Marker(
+                                point: LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()),
+                                width: 40,
+                                height: 40,
+                                child: GestureDetector(
+                                  onTap: () => _showStopInfo(stop),
+                                  child: Icon(
+                                    Icons.location_on,
+                                    color: isSelected ? Colors.green : const Color(0xFF0054A6),
+                                    size: 40,
+                                  ),
+                                ),
+                              );
+                            }),
                         ],
                       ),
                   ],
@@ -1451,13 +1732,16 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                                 final stop = matchingStops.first;
                                                 setState(() {
                                                   _selectedSearchStop = stop;
+                                                  _searchedPlaceLocation = null;
+                                                  _searchedPlaceName = null;
+                                                  _closestStopsToSearchedPlace = [];
                                                 });
-                                                _mapController.move(LatLng(stop['lat'], stop['lon']), 16.0);
+                                                _mapController.move(LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()), 16.0);
                                                 _showStopInfo(stop);
                                                 FocusScope.of(context).unfocus();
                                                 _searchController.clear();
                                             } else {
-                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Paragem não encontrada.')));
+                                                await _searchPlace(value);
                                             }
                                             return;
                                         }
@@ -1532,7 +1816,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           ],
                         ),
                       ),
-                      if (_searchResults.isNotEmpty || _originSearchResults.isNotEmpty)
+                      if (_searchResults.isNotEmpty || _originSearchResults.isNotEmpty || (!_isSearchExpanded && _searchController.text.isNotEmpty && _searchFocusNode.hasFocus))
                         Container(
                           width: 340,
                           margin: const EdgeInsets.only(top: 4),
@@ -1547,8 +1831,40 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           child: ListView.builder(
                             shrinkWrap: true,
                             padding: EdgeInsets.zero,
-                            itemCount: _searchResults.isNotEmpty ? _searchResults.length : _originSearchResults.length,
+                            itemCount: _isSearchExpanded
+                                ? (_searchResults.isNotEmpty ? _searchResults.length : _originSearchResults.length)
+                                : (_searchController.text.isNotEmpty && _searchFocusNode.hasFocus ? _searchResults.length + 1 : 0),
                             itemBuilder: (context, index) {
+                              if (!_isSearchExpanded && _searchController.text.isNotEmpty && _searchFocusNode.hasFocus) {
+                                if (index == 0) {
+                                  return ListTile(
+                                    leading: const Icon(Icons.search, color: Colors.blueAccent),
+                                    title: Text('Pesquisar "${_searchController.text}" no mapa'),
+                                    onTap: () {
+                                      _searchPlace(_searchController.text);
+                                    },
+                                  );
+                                }
+                                final stop = _searchResults[index - 1];
+                                return ListTile(
+                                  leading: const Icon(Icons.directions_bus, color: Colors.blueAccent),
+                                  title: Text(stop['name']),
+                                  onTap: () async {
+                                    _searchController.text = stop['name'];
+                                    _searchFocusNode.unfocus();
+                                    setState(() {
+                                      _selectedSearchStop = stop;
+                                      _searchedPlaceLocation = null;
+                                      _searchedPlaceName = null;
+                                      _closestStopsToSearchedPlace = [];
+                                    });
+                                    _mapController.move(LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()), 16.0);
+                                    _showStopInfo(stop);
+                                    _searchController.clear();
+                                  },
+                                );
+                              }
+
                               final isSearch = _searchResults.isNotEmpty;
                               final stop = isSearch ? _searchResults[index] : _originSearchResults[index];
                               return ListTile(
@@ -1561,8 +1877,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                     if (!_isSearchExpanded) {
                                         setState(() {
                                           _selectedSearchStop = stop;
+                                          _searchedPlaceLocation = null;
+                                          _searchedPlaceName = null;
+                                          _closestStopsToSearchedPlace = [];
                                         });
-                                        _mapController.move(LatLng(stop['lat'], stop['lon']), 16.0);
+                                        _mapController.move(LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()), 16.0);
                                         _showStopInfo(stop);
                                         _searchController.clear();
                                     } else {
@@ -1572,12 +1891,12 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                            final lowerOrig = _originController.text.trim().toLowerCase();
                                            final matchingOrigStops = _allStops.where((s) => s['name'].toString().toLowerCase().contains(lowerOrig)).toList();
                                            if (matchingOrigStops.isNotEmpty) {
-                                             originPt = LatLng(matchingOrigStops.first['lat'], matchingOrigStops.first['lon']);
+                                             originPt = LatLng((matchingOrigStops.first['lat'] as num).toDouble(), (matchingOrigStops.first['lon'] as num).toDouble());
                                            } else {
                                              originPt = await ApiService.geocodeAddress(_originController.text.trim());
                                            }
                                         }
-                                        final pt = LatLng(stop['lat'], stop['lon']);
+                                        final pt = LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble());
                                         await _requestNavigation(pt, customOrigin: originPt);
                                         setState(() { _isSearchExpanded = false; });
                                     }
@@ -1639,6 +1958,30 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                      ),
                     ),
                   ),
+                Positioned(
+                  bottom: 96,
+                  right: 20,
+                  child: FloatingActionButton(
+                    heroTag: "btnThemeToggle",
+                    backgroundColor: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF1E293B)
+                        : Colors.white,
+                    foregroundColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white
+                        : const Color(0xFF1E293B),
+                    onPressed: () {
+                      themeNotifier.value =
+                          themeNotifier.value == ThemeMode.light
+                              ? ThemeMode.dark
+                              : ThemeMode.light;
+                    },
+                    child: Icon(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Icons.light_mode
+                          : Icons.dark_mode,
+                    ),
+                  ),
+                ),
                 Positioned(
                   bottom: 24,
                   right: 20,
@@ -1889,6 +2232,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                             _routeOptions = null;
                                             _isRouteExpanded = false;
                                             _selectedSearchStop = null;
+                                            _searchedPlaceLocation = null;
+                                            _searchedPlaceName = null;
+                                            _closestStopsToSearchedPlace = [];
                                           });
                                         },
                                         style: ElevatedButton.styleFrom(
@@ -1914,13 +2260,13 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           ),
         ],
       ),
-        bottomNavigationBar: kIsWeb ? null : Container(
+        bottomNavigationBar: isWide ? null : Container(
           height: 70,
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 10,
                 offset: const Offset(0, -2),
               ),
@@ -1945,7 +2291,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     _showStopInfo(selectedStop);
                   }
                 }),
-                _buildBottomNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal),
+                _buildBottomNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal, badgeCount: _alertBadgeCount),
                 _buildBottomNavIcon(Icons.schedule, t('horarios_label'), onTap: _showLinesScheduleModal),
                 _buildBottomNavIcon(
                   _showNearbyStops ? Icons.location_on : Icons.location_off, 
@@ -1980,5 +2326,78 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           ),
         ),
       );
+  }
+}
+
+class PulsingBadge extends StatefulWidget {
+  final int count;
+  const PulsingBadge({super.key, required this.count});
+
+  @override
+  State<PulsingBadge> createState() => _PulsingBadgeState();
+}
+
+class _PulsingBadgeState extends State<PulsingBadge> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.count <= 0) return const SizedBox.shrink();
+    
+    return Stack(
+      alignment: Alignment.center,
+      clipBehavior: Clip.none,
+      children: [
+        AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Container(
+              width: 16 + (16 * _controller.value),
+              height: 16 + (16 * _controller.value),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 1.0 - _controller.value),
+                shape: BoxShape.circle,
+              ),
+            );
+          },
+        ),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: const BoxDecoration(
+            color: Colors.red,
+            shape: BoxShape.circle,
+          ),
+          constraints: const BoxConstraints(
+            minWidth: 16,
+            minHeight: 16,
+          ),
+          child: Center(
+            child: Text(
+              '${widget.count}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

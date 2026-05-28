@@ -25,6 +25,7 @@ class Route(Base):
     short_name = Column(String)           # Ex: '1'
     long_name = Column(String)            # Ex: 'Estação - Hospital'
     color = Column(String)                # Cor da linha no mapa [cite: 24]
+    is_active = Column(Boolean, default=True)
 
 class Trip(Base):
     __tablename__ = "trips"

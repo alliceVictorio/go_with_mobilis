@@ -60,6 +60,7 @@ class RouteResponse(BaseModel):
     short_name: str
     long_name: str
     color: str
+    is_active: bool = True
 
     class Config:
         from_attributes = True
@@ -135,11 +136,13 @@ class RouteCreate(BaseModel):
     short_name: str
     long_name: str
     color: str
+    is_active: Optional[bool] = True
 
 class RouteUpdate(BaseModel):
     short_name: Optional[str] = None
     long_name: Optional[str] = None
     color: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class StopUpdate(BaseModel):
     name: Optional[str] = None
