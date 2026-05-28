@@ -17,10 +17,14 @@ models.Base.metadata.create_all(bind=database.engine)
 from sqlalchemy import text
 try:
     with database.engine.connect() as conn:
+        # Migrações defensivas para tabelas existentes
         conn.execute(text("ALTER TABLE routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"))
         conn.commit()
+        print("Migrações automáticas aplicadas com sucesso!")
 except Exception as e:
-    print(f"Erro ao adicionar coluna is_active à tabela routes: {e}")
+    print(f"Erro ao aplicar migrações defensivas na base de dados: {e}")
 
 app = FastAPI(title="Go with Mobilis API")
 
