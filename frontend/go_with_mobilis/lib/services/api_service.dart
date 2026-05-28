@@ -16,6 +16,18 @@ class ApiService {
 
   /// Descoberta automática e concorrente do servidor backend no arranque
   static Future<void> discoverActiveServer() async {
+    // Se estivermos na Web e em produção (fora de localhost), forçamos o backend do Render
+    if (kIsWeb) {
+      final host = Uri.base.host;
+      if (host.isNotEmpty && !host.contains('localhost') && !host.contains('127.0.0.1') && !host.startsWith('192.168.')) {
+        _activeBaseUrl = 'https://go-with-mobilis-backend.onrender.com';
+        if (kDebugMode) {
+          print('[Discovery] Web Produção: ignorando descoberta e forçando URL de produção.');
+        }
+        return;
+      }
+    }
+
     // 1. Tentar ler do secure storage primeiro (cache do último IP funcional)
     try {
       final cachedUrl = await _storage.read(key: 'active_backend_url');
@@ -146,7 +158,7 @@ class ApiService {
   static Future<String?> _probeUrl(String url) async {
     try {
       final uri = Uri.parse('$url/stops');
-      final response = await http.get(uri).timeout(const Duration(milliseconds: 600));
+      final response = await http.get(uri).timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         return url;
       }
@@ -284,7 +296,14 @@ class ApiService {
 
     final url = Uri.parse('$baseUrl/stops');
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 4));
+      // Se não houver nada na cache local (primeira abertura), permitimos um timeout maior (40 segundos)
+      // para permitir o "cold start" acordar o servidor gratuito do Render se este estiver adormecido.
+      // Se já houver dados na cache, podemos manter um timeout rápido de 5 segundos.
+      final timeoutDuration = (_cachedStops != null && _cachedStops!.isNotEmpty)
+          ? const Duration(seconds: 5)
+          : const Duration(seconds: 40);
+
+      final response = await http.get(url).timeout(timeoutDuration);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded is List && decoded.isNotEmpty) {
