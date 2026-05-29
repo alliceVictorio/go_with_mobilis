@@ -151,7 +151,8 @@ def send_verification_email(email: str, token: str):
     brevo_api_key = os.getenv("BREVO_API_KEY", "")
     if brevo_api_key:
         try:
-            import requests
+            import urllib.request
+            import json
             url = "https://api.brevo.com/v3/smtp/email"
             payload = {
                 "sender": {"name": "Go with Mobilis", "email": SMTP_USERNAME or "no-reply@gowithmobilis.com"},
@@ -164,12 +165,18 @@ def send_verification_email(email: str, token: str):
                 "content-type": "application/json",
                 "api-key": brevo_api_key
             }
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
-            if response.status_code in [200, 201, 202]:
+            
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers=headers,
+                method='POST'
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                response.read()
                 print(f"[EMAIL SERVICE] E-mail de confirmação enviado com sucesso via Brevo HTTP API para: {email}")
                 return
-            else:
-                print(f"[EMAIL SERVICE] [ERRO] Falha ao enviar via Brevo API: {response.text}")
         except Exception as e:
             print(f"[EMAIL SERVICE] [ERRO] Exceção ao enviar via Brevo API: {e}")
 
