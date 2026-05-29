@@ -51,6 +51,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   Map<String, dynamic>? _routePlanData;
   List<dynamic>? _routeOptions;
   bool _isRouteExpanded = false;
+  bool _isRoutePanelMinimized = false;
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _originController = TextEditingController(text: "A minha localização");
   final FocusNode _searchFocusNode = FocusNode();
@@ -405,6 +406,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _isSearchExpanded = false;
       _routeOptions = null;
       _isRouteExpanded = false;
+      _isRoutePanelMinimized = false;
       _selectedSearchStop = null;
       _searchedPlaceLocation = null;
       _searchedPlaceName = null;
@@ -501,6 +503,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _alightingStop = routePlan['alighting_stop'];
       _routePlanData = routePlan;
       _isRouteExpanded = false;
+      _isRoutePanelMinimized = false;
       _navWaitTime = "Próximo autocarro em $diffMins min";
       
       Color routeColor = const Color(0xFF0054A6);
@@ -2042,21 +2045,21 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                               mainAxisSize: isWide ? MainAxisSize.max : MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                // "Puxador" visual apenas para telemóveis
-                                if (!isWide)
-                                  Center(
-                                    child: Container(
-                                      width: 40, 
-                                      height: 5,
-                                      margin: const EdgeInsets.only(bottom: 16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade300,
-                                        borderRadius: BorderRadius.circular(4)
+                                // Se ainda não escolheu a rota (Opções de Viagem)
+                                if (_routePlanData == null && _routeOptions != null) ...[
+                                  // "Puxador" visual apenas para telemóveis
+                                  if (!isWide)
+                                    Center(
+                                      child: Container(
+                                        width: 40, 
+                                        height: 5,
+                                        margin: const EdgeInsets.only(bottom: 16),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.shade300,
+                                          borderRadius: BorderRadius.circular(4)
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                
-                                if (_routePlanData == null && _routeOptions != null) ...[
                                   const Text("Opções de Viagem", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 16),
                                   (() {
@@ -2104,149 +2107,196 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                         : SizedBox(height: 250, child: listView);
                                   })(),
                                 ]
+                                // Se a rota já está selecionada (Navegação Ativa)
                                 else if (_routePlanData != null) ...[
-                                  // Tempo e Informação da Linha
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
+                                  // Cabeçalho Interativo (Puxador + Info da Rota)
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () {
+                                      if (!isWide) {
+                                        setState(() {
+                                          _isRoutePanelMinimized = !_isRoutePanelMinimized;
+                                        });
+                                      }
+                                    },
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        // "Puxador" visual apenas para telemóveis
+                                        if (!isWide)
+                                          Center(
+                                            child: Container(
+                                              width: 40, 
+                                              height: 5,
+                                              margin: const EdgeInsets.only(bottom: 16),
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade300,
+                                                borderRadius: BorderRadius.circular(4)
+                                              ),
+                                            ),
+                                          ),
+                                        
+                                        // Tempo e Informação da Linha
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    _navWaitTime.replaceAll("Próximo autocarro em ", ""),
+                                                    style: TextStyle(
+                                                      fontSize: 32, 
+                                                      color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF156A40), 
+                                                      fontWeight: FontWeight.w900, 
+                                                      letterSpacing: -0.5
+                                                    )
+                                                  ),
+                                                  Row(
+                                                    children: [
+                                                      const Text("Tempo de espera", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                                      if (!isWide) ...[
+                                                        const SizedBox(width: 8),
+                                                        Icon(
+                                                          _isRoutePanelMinimized ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                                                          color: Colors.grey.shade500,
+                                                          size: 20,
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF0054A6),
+                                                borderRadius: BorderRadius.circular(12)
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(Icons.directions_bus, color: Colors.white, size: 20),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    _routePlanData!['route_name'] ?? 'Mobilis', 
+                                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                  // Elementos que serão ocultados quando minimizado
+                                  if (!_isRoutePanelMinimized) ...[
+                                    const Divider(height: 32),
+                                    
+                                    // Rota Detalhada (Timeline Expansível)
+                                    (() {
+                                      final timelineWidget = SingleChildScrollView(
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(
-                                              _navWaitTime.replaceAll("Próximo autocarro em ", ""),
-                                              style: TextStyle(
-                                                fontSize: 32, 
-                                                color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF156A40), 
-                                                fontWeight: FontWeight.w900, 
-                                                letterSpacing: -0.5
-                                              )
-                                            ),
-                                            const Text("Tempo de espera", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                            // 1. Caminhada inicial
+                                            if (_originPoint != null && _boardingStop != null)
+                                              _buildWalkSegment(
+                                                _originController.text.trim().toLowerCase() == "a minha localização" || _originController.text.trim().isEmpty ? "A sua localização" : _originController.text,
+                                                _originPoint!,
+                                                LatLng(_boardingStop['lat'], _boardingStop['lon']),
+                                                isStart: true
+                                              ),
+                                              
+                                            // 2. Autocarro
+                                            _buildBusSegment(),
+                                            
+                                            // 3. Caminhada final
+                                            if (_destinationPoint != null && _alightingStop != null)
+                                              _buildWalkSegment(
+                                                _alightingStop['name'],
+                                                LatLng(_alightingStop['lat'], _alightingStop['lon']),
+                                                _destinationPoint!,
+                                                isStart: false
+                                              ),
                                           ],
                                         ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                        decoration: BoxDecoration(
-                                          color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF0054A6),
-                                          borderRadius: BorderRadius.circular(12)
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            const Icon(Icons.directions_bus, color: Colors.white, size: 20),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              _routePlanData!['route_name'] ?? 'Mobilis', 
-                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
-                                            ),
-                                          ],
+                                      );
+                                      
+                                      return isWide 
+                                          ? Expanded(child: timelineWidget)
+                                          : ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                maxHeight: MediaQuery.of(context).size.height * 0.45
+                                              ),
+                                              child: timelineWidget,
+                                            );
+                                    })(),
+                                    
+                                    const SizedBox(height: 24),
+                                    if (!_isTripStarted)
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: () {
+                                            setState(() {
+                                              _isTripStarted = true;
+                                            });
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(t('trip_started_msg')),
+                                                backgroundColor: const Color(0xFF156A40),
+                                              ),
+                                            );
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF156A40), 
+                                            foregroundColor: Colors.white, 
+                                            elevation: 2,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                            padding: const EdgeInsets.symmetric(vertical: 16)
+                                          ),
+                                          child: Text(t('start_trip_btn'), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 13))
                                         ),
                                       )
-                                    ],
-                                  ),
-                                  
-                                  const Divider(height: 32),
-                                  
-                                  // Rota Detalhada (Timeline Expansível)
-                                  (() {
-                                    final timelineWidget = SingleChildScrollView(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          // 1. Caminhada inicial
-                                          if (_originPoint != null && _boardingStop != null)
-                                            _buildWalkSegment(
-                                              _originController.text.trim().toLowerCase() == "a minha localização" || _originController.text.trim().isEmpty ? "A sua localização" : _originController.text,
-                                              _originPoint!,
-                                              LatLng(_boardingStop['lat'], _boardingStop['lon']),
-                                              isStart: true
-                                            ),
-                                            
-                                          // 2. Autocarro
-                                          _buildBusSegment(),
-                                          
-                                          // 3. Caminhada final
-                                          if (_destinationPoint != null && _alightingStop != null)
-                                            _buildWalkSegment(
-                                              _alightingStop['name'],
-                                              LatLng(_alightingStop['lat'], _alightingStop['lon']),
-                                              _destinationPoint!,
-                                              isStart: false
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                    
-                                    return isWide 
-                                        ? Expanded(child: timelineWidget)
-                                        : ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              maxHeight: MediaQuery.of(context).size.height * 0.45
-                                            ),
-                                            child: timelineWidget,
-                                          );
-                                  })(),
-                                  
-                                  const SizedBox(height: 24),
-                                  if (!_isTripStarted)
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _isTripStarted = true;
-                                          });
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(t('trip_started_msg')),
-                                              backgroundColor: const Color(0xFF156A40),
-                                            ),
-                                          );
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF156A40), 
-                                          foregroundColor: Colors.white, 
-                                          elevation: 2,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                          padding: const EdgeInsets.symmetric(vertical: 16)
+                                    else
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: () {
+                                            setState(() {
+                                              _isNavigating = false;
+                                              _isTripStarted = false;
+                                              _passedStopIds.clear();
+                                              _navPolylines.clear();
+                                              _searchController.clear();
+                                              _originController.text = "A minha localização";
+                                              _isSearchExpanded = false;
+                                              _originPoint = null;
+                                              _routePlanData = null;
+                                              _routeOptions = null;
+                                              _isRouteExpanded = false;
+                                              _isRoutePanelMinimized = false;
+                                              _selectedSearchStop = null;
+                                              _searchedPlaceLocation = null;
+                                              _searchedPlaceName = null;
+                                              _closestStopsToSearchedPlace = [];
+                                            });
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200, 
+                                            foregroundColor: Colors.redAccent, 
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                            padding: const EdgeInsets.symmetric(vertical: 16)
+                                          ),
+                                          child: Text(t('cancel_trip_btn'), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 13))
                                         ),
-                                        child: Text(t('start_trip_btn'), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 13))
                                       ),
-                                    )
-                                  else
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton(
-                                        onPressed: () {
-                                          setState(() {
-                                            _isNavigating = false;
-                                            _isTripStarted = false;
-                                            _passedStopIds.clear();
-                                            _navPolylines.clear();
-                                            _searchController.clear();
-                                            _originController.text = "A minha localização";
-                                            _isSearchExpanded = false;
-                                            _originPoint = null;
-                                            _routePlanData = null;
-                                            _routeOptions = null;
-                                            _isRouteExpanded = false;
-                                            _selectedSearchStop = null;
-                                            _searchedPlaceLocation = null;
-                                            _searchedPlaceName = null;
-                                            _closestStopsToSearchedPlace = [];
-                                          });
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200, 
-                                          foregroundColor: Colors.redAccent, 
-                                          elevation: 0,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                          padding: const EdgeInsets.symmetric(vertical: 16)
-                                        ),
-                                        child: Text(t('cancel_trip_btn'), style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: 13))
-                                      ),
-                                    ),
+                                  ],
                                 ],
                               ],
                             ),
