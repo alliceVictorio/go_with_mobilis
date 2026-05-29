@@ -152,6 +152,7 @@ def send_verification_email(email: str, token: str):
     if brevo_api_key:
         try:
             import urllib.request
+            import urllib.error
             import json
             url = "https://api.brevo.com/v3/smtp/email"
             payload = {
@@ -177,6 +178,12 @@ def send_verification_email(email: str, token: str):
                 response.read()
                 print(f"[EMAIL SERVICE] E-mail de confirmação enviado com sucesso via Brevo HTTP API para: {email}")
                 return
+        except urllib.error.HTTPError as he:
+            try:
+                err_body = he.read().decode('utf-8')
+                print(f"[EMAIL SERVICE] [ERRO] Falha HTTP do Brevo API ({he.code}): {err_body}")
+            except Exception:
+                print(f"[EMAIL SERVICE] [ERRO] Falha HTTP do Brevo API ({he.code})")
         except Exception as e:
             print(f"[EMAIL SERVICE] [ERRO] Exceção ao enviar via Brevo API: {e}")
 
