@@ -355,57 +355,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     });
   }
 
-  String _getGreetingMessage() {
-    final hour = DateTime.now().hour;
-    String greeting = "Olá";
-    if (hour < 12) {
-      greeting = "Bom dia";
-    } else if (hour < 20) {
-      greeting = "Boa tarde";
-    } else {
-      greeting = "Boa noite";
-    }
-    final firstName = _userName.split(' ').first;
-    return "$greeting, $firstName! ☀️ Para onde vai hoje?";
-  }
-
-  Widget _buildShortcutButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 90,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(isDark ? 0.25 : 0.12),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.4), width: 1.5),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _checkStopProximity(LatLng currentLoc) {
     if (!_isNavigating || !_isTripStarted || _routePlanData == null) return;
 
@@ -1359,7 +1308,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
 
     final bool isWide = MediaQuery.of(context).size.width > 768;
-    final bool showShortcuts = !_isNavigating && !_isSearchExpanded && _selectedSearchStop == null && _searchedPlaceLocation == null;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -1687,7 +1635,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                 colorOverride: Colors.redAccent,
                                 onTap: () async {
                                   const storage = FlutterSecureStorage();
-                                  await storage.deleteAll();
+                                  await storage.delete(key: 'access_token');
+                                  await storage.delete(key: 'is_admin');
                                   if (context.mounted) {
                                     Navigator.of(context).pushReplacementNamed('/login');
                                   }
@@ -2034,7 +1983,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     ),
                   ),
                 Positioned(
-                  bottom: (showShortcuts && !isWide) ? 220 : 96,
+                  bottom: 96,
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: "btnThemeToggle",
@@ -2058,7 +2007,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   ),
                 ),
                 Positioned(
-                  bottom: (showShortcuts && !isWide) ? 148 : 24,
+                  bottom: 24,
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: "btnLocation",
@@ -2404,84 +2353,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     );
                     }
                   ),
-                if (showShortcuts)
-                  Positioned(
-                    bottom: 20,
-                    left: 20,
-                    right: isWide ? null : 20,
-                    width: isWide ? 380 : null,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).brightness == Brightness.dark
-                                ? Colors.black.withOpacity(0.45)
-                                : Colors.white.withOpacity(0.55),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(
-                              color: Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white12
-                                  : Colors.white24,
-                              width: 1.5,
-                            ),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, 4))
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _getGreetingMessage(),
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                  _buildShortcutButton(
-                                    icon: Icons.home,
-                                    label: 'Casa',
-                                    color: const Color(0xFF0054A6),
-                                    onTap: () {
-                                      _searchController.text = "Guimarota";
-                                      _requestNavigation(const LatLng(39.734154, -8.799372));
-                                    },
-                                  ),
-                                  _buildShortcutButton(
-                                    icon: Icons.school,
-                                    label: 'Campus 2',
-                                    color: const Color(0xFF156A40),
-                                    onTap: () {
-                                      _searchController.text = "Campus 2 IPL";
-                                      _requestNavigation(const LatLng(39.733169, -8.820954));
-                                    },
-                                  ),
-                                  _buildShortcutButton(
-                                    icon: Icons.work,
-                                    label: 'Centro',
-                                    color: const Color(0xFFE31C39),
-                                    onTap: () {
-                                      _searchController.text = "Jardim Luís de Camões";
-                                      _requestNavigation(const LatLng(39.745293, -8.806200));
-                                    },
-                                  ),
-                                ],
-                              )
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
+
               ],
             ),
           ),
@@ -2542,7 +2414,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   colorOverride: Colors.redAccent,
                   onTap: () async {
                     const storage = FlutterSecureStorage();
-                    await storage.deleteAll();
+                    await storage.delete(key: 'access_token');
+                    await storage.delete(key: 'is_admin');
                     if (context.mounted) {
                       Navigator.of(context).pushReplacementNamed('/login');
                     }
