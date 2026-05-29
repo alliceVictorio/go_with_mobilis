@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -792,8 +793,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       final alerts = await ApiService.getActiveAlerts();
       if (!mounted) return;
 
-      const storage = FlutterSecureStorage();
-      final dismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
+      final prefs = await SharedPreferences.getInstance();
+      final dismissedStr = prefs.getString('dismissed_alert_ids') ?? '';
       final dismissedIds = dismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
       // Filtramos os alertas que o utilizador ainda não viu para definir o badgeCount
@@ -1045,8 +1046,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
     try {
       final alerts = await ApiService.getActiveAlerts();
-      const storage = FlutterSecureStorage();
-      final currentDismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
+      final prefs = await SharedPreferences.getInstance();
+      final currentDismissedStr = prefs.getString('dismissed_alert_ids') ?? '';
       final currentDismissedList = currentDismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       bool changed = false;
       for (var alert in alerts) {
@@ -1057,7 +1058,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         }
       }
       if (changed) {
-        await storage.write(key: 'dismissed_alert_ids', value: currentDismissedList.join(','));
+        await prefs.setString('dismissed_alert_ids', currentDismissedList.join(','));
       }
     } catch (_) {}
 
