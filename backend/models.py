@@ -59,6 +59,7 @@ class User(Base):
     # NOVO: Controlo de verificação de e-mail
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)
+    reset_token = Column(String, nullable=True)
 
     favorites = relationship("Favorite", back_populates="owner")
 

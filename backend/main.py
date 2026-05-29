@@ -10,7 +10,7 @@ from typing import List
 from datetime import datetime, timedelta
 import zoneinfo
 from sqlalchemy import cast, Time
-from email_service import send_verification_email
+from email_service import send_verification_email, send_password_reset_email
 
 # 1. Inicializar a App e Base de Dados
 models.Base.metadata.create_all(bind=database.engine)
@@ -24,6 +24,7 @@ try:
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token VARCHAR;"))
         # Assegurar que utilizadores anteriores não fiquem bloqueados
         conn.execute(text("UPDATE users SET is_verified = TRUE WHERE is_verified IS NULL;"))
         conn.commit()
@@ -311,7 +312,362 @@ def verify_email(token: str = Query(...), db: Session = Depends(database.get_db)
     </html>
     """
 
+
+@app.post("/forgot-password")
+def forgot_password(
+    req: schemas.ForgotPasswordRequest, 
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(database.get_db)
+):
+    # Procura utilizador
+    user = db.query(models.User).filter(models.User.email == req.email).first()
+    
+    # Se existir, gera token e agenda envio
+    if user:
+        token = str(uuid.uuid4())
+        user.reset_token = token
+        db.commit()
+        
+        # Envia e-mail em segundo plano
+        background_tasks.add_task(send_password_reset_email, user.email, token)
+        
+    # Retorna mensagem genérica de sucesso por motivos de segurança (evitar enumeração de utilizadores)
+    return {"message": "Se o endereço de e-mail estiver registado, receberá um link de recuperação brevemente."}
+
+
+@app.get("/reset-password-page", response_class=responses.HTMLResponse)
+def reset_password_page(token: str = Query(...), db: Session = Depends(database.get_db)):
+    # Validar se o token existe na DB
+    user = db.query(models.User).filter(models.User.reset_token == token).first()
+    
+    if not user:
+        # Página de erro premium
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Erro de Recuperação - Go with Mobilis</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: #F8FAFC;
+                    margin: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    color: #334155;
+                }
+                .card {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 20px;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+                    text-align: center;
+                    max-width: 450px;
+                    width: 90%;
+                }
+                .icon {
+                    font-size: 60px;
+                    color: #EF4444;
+                    margin-bottom: 20px;
+                    line-height: 1;
+                }
+                h1 {
+                    font-size: 24px;
+                    margin-bottom: 10px;
+                    color: #1E293B;
+                    font-weight: 700;
+                }
+                p {
+                    font-size: 15px;
+                    line-height: 1.6;
+                    color: #64748B;
+                    margin-bottom: 25px;
+                }
+                .btn {
+                    display: inline-block;
+                    background-color: #0054A6;
+                    color: white;
+                    text-decoration: none;
+                    padding: 12px 30px;
+                    border-radius: 30px;
+                    font-weight: 600;
+                    box-shadow: 0 4px 10px rgba(0,84,166,0.2);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="icon">✕</div>
+                <h1>Link Expirado ou Inválido</h1>
+                <p>O link de recuperação de palavra-passe é inválido, expirou ou já foi utilizado. Solicite uma nova recuperação a partir da aplicação.</p>
+                <a href="https://gomwithobilis.netlify.app/#/login" class="btn">Voltar ao Website</a>
+            </div>
+        </body>
+        </html>
+        """
+        
+    # Página de redefinição com design espetacular e formulário AJAX premium
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Redefinir Palavra-passe - Go with Mobilis</title>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+                margin: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                color: #F8FAFC;
+                overflow: hidden;
+            }}
+            .card {{
+                background: rgba(30, 41, 59, 0.75);
+                backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                padding: 45px 35px;
+                border-radius: 24px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+                text-align: center;
+                max-width: 440px;
+                width: 90%;
+                animation: fadeInUp 0.8s ease-out;
+            }}
+            h1 {{
+                font-size: 26px;
+                margin-top: 0;
+                margin-bottom: 10px;
+                font-weight: 700;
+                color: #FFFFFF;
+                letter-spacing: -0.5px;
+            }}
+            p.subtitle {{
+                font-size: 14px;
+                color: #94A3B8;
+                margin-bottom: 30px;
+            }}
+            .input-group {{
+                margin-bottom: 20px;
+                text-align: left;
+            }}
+            .input-group label {{
+                display: block;
+                font-size: 12px;
+                font-weight: 600;
+                color: #CBD5E1;
+                margin-bottom: 6px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }}
+            .input-group input {{
+                width: 100%;
+                box-sizing: border-box;
+                padding: 12px 16px;
+                background: rgba(15, 23, 42, 0.6);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+                color: white;
+                font-size: 15px;
+                outline: none;
+                transition: all 0.2s ease-in-out;
+            }}
+            .input-group input:focus {{
+                border-color: #8CC63F;
+                box-shadow: 0 0 0 3px rgba(140, 198, 63, 0.25);
+            }}
+            .btn {{
+                width: 100%;
+                background: linear-gradient(135deg, #8CC63F 0%, #76A832 100%);
+                color: white;
+                border: none;
+                padding: 14px;
+                border-radius: 12px;
+                font-size: 15px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 4px 15px rgba(140, 198, 63, 0.3);
+                transition: all 0.2s ease-in-out;
+                margin-top: 10px;
+            }}
+            .btn:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(140, 198, 63, 0.5);
+            }}
+            .alert {{
+                padding: 12px;
+                border-radius: 10px;
+                font-size: 13px;
+                margin-bottom: 20px;
+                display: none;
+            }}
+            .alert-error {{
+                background: rgba(239, 68, 68, 0.15);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #FCA5A5;
+            }}
+            .alert-success {{
+                background: rgba(16, 185, 129, 0.15);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                color: #6EE7B7;
+            }}
+            .icon-wrapper {{
+                width: 70px;
+                height: 70px;
+                background: radial-gradient(circle, #8CC63F 0%, #76A832 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 25px auto;
+                box-shadow: 0 8px 20px rgba(140, 198, 63, 0.4);
+            }}
+            .checkmark {{
+                font-size: 36px;
+                color: white;
+                font-weight: bold;
+            }}
+            @keyframes fadeInUp {{
+                from {{
+                    opacity: 0;
+                    transform: translateY(20px);
+                }}
+                to {{
+                    opacity: 1;
+                    transform: translateY(0);
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="card" id="form-container">
+            <h1>Redefinir Palavra-passe</h1>
+            <p class="subtitle">Insira a sua nova palavra-passe abaixo para reaver o acesso à sua conta.</p>
+            
+            <div id="error-alert" class="alert alert-error"></div>
+            
+            <form id="reset-form">
+                <div class="input-group">
+                    <label for="password">Nova Palavra-passe</label>
+                    <input type="password" id="password" required placeholder="Mínimo 6 caracteres">
+                </div>
+                
+                <div class="input-group">
+                    <label for="confirm-password">Confirmar Nova Palavra-passe</label>
+                    <input type="password" id="confirm-password" required placeholder="Escreva novamente a senha">
+                </div>
+                
+                <button type="submit" class="btn" id="submit-btn">Redefinir Palavra-passe</button>
+            </form>
+        </div>
+
+        <script>
+            const form = document.getElementById('reset-form');
+            const passwordInput = document.getElementById('password');
+            const confirmInput = document.getElementById('confirm-password');
+            const errorAlert = document.getElementById('error-alert');
+            const submitBtn = document.getElementById('submit-btn');
+            const container = document.getElementById('form-container');
+
+            form.addEventListener('submit', async (e) => {{
+                e.preventDefault();
+                errorAlert.style.display = 'none';
+                
+                const pwd = passwordInput.value;
+                const confirmPwd = confirmInput.value;
+                
+                if (pwd.length < 6) {{
+                    errorAlert.innerText = 'A palavra-passe deve ter pelo menos 6 caracteres.';
+                    errorAlert.style.display = 'block';
+                    return;
+                }}
+                
+                if (pwd !== confirmPwd) {{
+                    errorAlert.innerText = 'As palavras-passe não coincidem.';
+                    errorAlert.style.display = 'block';
+                    return;
+                }}
+                
+                submitBtn.disabled = true;
+                submitBtn.innerText = 'A processar...';
+                
+                try {{
+                    const response = await fetch('/reset-password', {{
+                        method: 'POST',
+                        headers: {{
+                            'Content-Type': 'application/json'
+                        }},
+                        body: JSON.stringify({{
+                            token: "{token}",
+                            new_password: pwd
+                        }})
+                    }});
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {{
+                        // Mostrar ecrã de sucesso glorioso
+                        container.innerHTML = `
+                            <div class="icon-wrapper">
+                                <span class="checkmark">✓</span>
+                            </div>
+                            <h1>Palavra-passe Redefinida!</h1>
+                            <p class="subtitle">A sua palavra-passe foi alterada com sucesso. Já pode iniciar sessão no site.</p>
+                            <p style="font-size: 13px; color: #94A3B8; margin-top: 15px;">Redirecionando em 3 segundos...</p>
+                            <a href="https://gomwithobilis.netlify.app/#/login" class="btn" style="text-decoration:none; display:block;">Entrar no Website</a>
+                        `;
+                        
+                        setTimeout(() => {{
+                            window.location.href = "https://gomwithobilis.netlify.app/#/login";
+                        }}, 3000);
+                    }} else {{
+                        errorAlert.innerText = data.detail || 'Ocorreu um erro ao redefinir a palavra-passe.';
+                        errorAlert.style.display = 'block';
+                        submitBtn.disabled = false;
+                        submitBtn.innerText = 'Redefinir Palavra-passe';
+                    }}
+                }} catch (err) {{
+                    errorAlert.innerText = 'Erro ao conectar ao servidor.';
+                    errorAlert.style.display = 'block';
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = 'Redefinir Palavra-passe';
+                }}
+            }});
+        </script>
+    </body>
+    </html>
+    """
+
+
+@app.post("/reset-password")
+def reset_password(req: schemas.ResetPasswordRequest, db: Session = Depends(database.get_db)):
+    # Procurar o utilizador com este token
+    user = db.query(models.User).filter(models.User.reset_token == req.token).first()
+    
+    if not user:
+        raise HTTPException(status_code=400, detail="Link de redefinição inválido ou expirou.")
+        
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="A palavra-passe deve ter pelo menos 6 caracteres.")
+        
+    # Criptografar nova senha e limpar token
+    user.hashed_password = pwd_context.hash(req.new_password)
+    user.reset_token = None
+    db.commit()
+    
+    return {"success": True, "message": "Palavra-passe redefinida com sucesso."}
+
+
 from fastapi.security import OAuth2PasswordBearer
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 

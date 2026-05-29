@@ -276,6 +276,29 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> forgotPassword(String email) async {
+    final url = Uri.parse('$baseUrl/forgot-password');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message'] ?? 'E-mail de recuperação enviado.'};
+      } else {
+        return {'success': false, 'message': data['detail'] ?? 'Erro ao enviar e-mail de recuperação.'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Erro de conexão ao servidor.'};
+    }
+  }
+
+
   static Future<List<dynamic>> getStops({bool forceRefresh = false}) async {
     if (!forceRefresh && _cachedStops != null && _cachedStops!.isNotEmpty) {
       return _cachedStops!;

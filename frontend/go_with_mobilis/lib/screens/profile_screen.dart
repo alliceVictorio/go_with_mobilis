@@ -161,74 +161,245 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showPasswordDialog() {
     final newPasswordCtrl = TextEditingController();
     final confirmPasswordCtrl = TextEditingController();
-    
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool dialogSaving = false;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Alterar Palavra-passe', style: TextStyle(color: Color(0xFF156A40))),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: newPasswordCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Nova Palavra-passe'),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: confirmPasswordCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Confirmar Palavra-passe'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF156A40),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () async {
-              if (newPasswordCtrl.text.isEmpty || newPasswordCtrl.text.length < 6) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('A palavra-passe deve ter pelo menos 6 caracteres.'), backgroundColor: Colors.redAccent)
-                 );
-                 return;
-              }
-              if (newPasswordCtrl.text != confirmPasswordCtrl.text) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                   const SnackBar(content: Text('Palavras-passe não coincidem.'), backgroundColor: Colors.redAccent)
-                 );
-                 return;
-              }
-              Navigator.pop(ctx);
-              
-              setState(() => _isLoading = true);
-              final success = await ApiService.updateUserProfile(null, null, null, newPasswordCtrl.text, null, null);
-              setState(() => _isLoading = false);
-              
-              if (mounted) {
-                if (success) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Palavra-passe alterada com sucesso!'), backgroundColor: Color(0xFF156A40))
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Erro ao atualizar a palavra-passe.'), backgroundColor: Colors.redAccent)
-                  );
-                }
-              }
-            },
-            child: const Text('Submeter'),
-          ),
-        ],
-      ),
+      barrierDismissible: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: Colors.white,
+              title: Row(
+                children: [
+                  const Icon(Icons.lock, color: Color(0xFF156A40), size: 24),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Alterar Palavra-passe',
+                    style: TextStyle(
+                      color: Color(0xFF1E293B),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Defina uma nova palavra-passe de acesso segura para a sua conta.',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Nova Palavra-passe',
+                    style: TextStyle(
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 36,
+                    child: TextField(
+                      controller: newPasswordCtrl,
+                      obscureText: obscureNew,
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Mínimo 6 caracteres',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                        suffixIcon: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            obscureNew ? Icons.visibility_off : Icons.visibility,
+                            color: const Color(0xFF94A3B8),
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            setStateDialog(() {
+                              obscureNew = !obscureNew;
+                            });
+                          },
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF156A40), width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Confirmar Palavra-passe',
+                    style: TextStyle(
+                      color: Color(0xFF475569),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 36,
+                    child: TextField(
+                      controller: confirmPasswordCtrl,
+                      obscureText: obscureConfirm,
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13),
+                      decoration: InputDecoration(
+                        hintText: 'Escreva novamente a senha',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                        suffixIcon: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                            color: const Color(0xFF94A3B8),
+                            size: 18,
+                          ),
+                          onPressed: () {
+                            setStateDialog(() {
+                              obscureConfirm = !obscureConfirm;
+                            });
+                          },
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF156A40), width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actionsPadding: const EdgeInsets.only(bottom: 20, right: 20, left: 20),
+              actions: [
+                TextButton(
+                  onPressed: dialogSaving ? null : () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF156A40),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  ),
+                  onPressed: dialogSaving
+                      ? null
+                      : () async {
+                          final pwd = newPasswordCtrl.text.trim();
+                          final confirm = confirmPasswordCtrl.text.trim();
+                          
+                          if (pwd.isEmpty || pwd.length < 6) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('A palavra-passe deve ter pelo menos 6 caracteres.'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                            return;
+                          }
+                          if (pwd != confirm) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('As palavras-passe não coincidem.'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                            return;
+                          }
+                          
+                          setStateDialog(() {
+                            dialogSaving = true;
+                          });
+                          
+                          final success = await ApiService.updateUserProfile(null, null, null, pwd, null, null);
+                          
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+                          
+                          if (context.mounted) {
+                            if (success) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Palavra-passe alterada com sucesso! ✨'),
+                                  backgroundColor: Color(0xFF156A40),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Erro ao atualizar a palavra-passe.'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                  child: dialogSaving
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          'Submeter',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
