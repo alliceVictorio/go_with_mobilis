@@ -15,6 +15,7 @@ import 'linha2_schedule_screen.dart';
 import 'linha9_schedule_screen.dart';
 import 'favorites_screen.dart';
 import '../services/translation_service.dart';
+import 'dart:ui' show ImageFilter;
 
 
 class PassengerMapScreen extends StatefulWidget {
@@ -68,6 +69,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   String? _searchedPlaceName;
   List<dynamic> _closestStopsToSearchedPlace = [];
   int _alertBadgeCount = 0;
+  Timer? _busAnimationTimer;
+  int _busPathIndex = 0;
+  LatLng? _animatedBusLocation;
 
   @override
   void initState() {
@@ -232,6 +236,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   @override
   void dispose() {
+    _busAnimationTimer?.cancel();
     _positionStreamSubscription?.cancel();
     _searchController.removeListener(_onSearchChanged);
     _originController.removeListener(_onOriginChanged);
@@ -316,6 +321,91 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
+  void _startBusAnimation(List<LatLng> pathPoints) {
+    _stopBusAnimation();
+    if (pathPoints.isEmpty) return;
+
+    _busPathIndex = 0;
+    setState(() {
+      _animatedBusLocation = pathPoints[0];
+    });
+
+    _busAnimationTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
+      if (!mounted) return;
+      if (_busPathIndex < pathPoints.length - 1) {
+        _busPathIndex++;
+        setState(() {
+          _animatedBusLocation = pathPoints[_busPathIndex];
+        });
+        _checkStopProximity(_animatedBusLocation!);
+        _mapController.move(_animatedBusLocation!, _mapController.camera.zoom);
+      } else {
+        _stopBusAnimation();
+        _finishNavigation();
+      }
+    });
+  }
+
+  void _stopBusAnimation() {
+    _busAnimationTimer?.cancel();
+    _busAnimationTimer = null;
+    setState(() {
+      _animatedBusLocation = null;
+      _busPathIndex = 0;
+    });
+  }
+
+  String _getGreetingMessage() {
+    final hour = DateTime.now().hour;
+    String greeting = "Olá";
+    if (hour < 12) {
+      greeting = "Bom dia";
+    } else if (hour < 20) {
+      greeting = "Boa tarde";
+    } else {
+      greeting = "Boa noite";
+    }
+    final firstName = _userName.split(' ').first;
+    return "$greeting, $firstName! ☀️ Para onde vai hoje?";
+  }
+
+  Widget _buildShortcutButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 90,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(isDark ? 0.25 : 0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _checkStopProximity(LatLng currentLoc) {
     if (!_isNavigating || !_isTripStarted || _routePlanData == null) return;
 
@@ -390,6 +480,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   void _finishNavigation() {
     if (!mounted) return;
+    _busAnimationTimer?.cancel();
+    _busAnimationTimer = null;
     setState(() {
       _isNavigating = false;
       _isTripStarted = false;
@@ -410,6 +502,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _searchedPlaceLocation = null;
       _searchedPlaceName = null;
       _closestStopsToSearchedPlace = [];
+      _animatedBusLocation = null;
+      _busPathIndex = 0;
     });
     
     showDialog(
@@ -1265,6 +1359,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
 
     final bool isWide = MediaQuery.of(context).size.width > 768;
+    final bool showShortcuts = !_isNavigating && !_isSearchExpanded && _selectedSearchStop == null && _searchedPlaceLocation == null;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -1350,67 +1445,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 ),
       body: Row(
         children: [
-          if (isWide)
-            Container(
-              width: 75,
-              color: Theme.of(context).colorScheme.surface,
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-                  IconButton(
-                    icon: Icon(Icons.menu, color: Theme.of(context).colorScheme.onSurface, size: 28),
-                    onPressed: () {
-                      _scaffoldKey.currentState?.openDrawer();
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  _buildNavIcon(Icons.star, t('favoritos_label'), onTap: () async {
-                    final selectedStop = await Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const FavoritesScreen())
-                    );
-                    if (selectedStop != null) {
-                      setState(() {
-                        _selectedSearchStop = selectedStop;
-                      });
-                      _mapController.move(LatLng(selectedStop['lat'], selectedStop['lon']), 16.0);
-                      _showStopInfo(selectedStop);
-                    }
-                  }),
-                  _buildNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal, badgeCount: _alertBadgeCount),
-                  _buildNavIcon(Icons.schedule, t('horarios_label'), onTap: _showLinesScheduleModal),
-                  _buildNavIcon(
-                    _showNearbyStops ? Icons.location_on : Icons.location_off, 
-                    t('nearby_stops_label'), 
-                    colorOverride: _showNearbyStops ? const Color(0xFF0054A6) : null,
-                    onTap: () {
-                      setState(() {
-                        _showNearbyStops = !_showNearbyStops;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(_showNearbyStops ? t('nearby_stops_visible') : t('nearby_stops_hidden')),
-                          duration: const Duration(seconds: 2),
-                        )
-                      );
-                    }
-                  ),
-                  const Spacer(),
-                  _buildNavIcon(
-                    Icons.logout, 
-                    t('logout_label'), 
-                    colorOverride: Colors.redAccent,
-                    onTap: () async {
-                      const storage = FlutterSecureStorage();
-                      await storage.deleteAll();
-                      if (context.mounted) {
-                        Navigator.of(context).pushReplacementNamed('/login');
-                      }
-                    }
-                  ),
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
           Expanded(
             child: Stack(
               children: [
@@ -1448,6 +1482,31 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     if (_currentLocation != null || _stops.isNotEmpty || _isNavigating || _selectedSearchStop != null || _searchedPlaceLocation != null)
                       MarkerLayer(
                         markers: [
+                          if (_isTripStarted && _animatedBusLocation != null)
+                            Marker(
+                              point: _animatedBusLocation!,
+                              width: 45,
+                              height: 45,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0054A6), // Azul Mobilis
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2.5),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 4,
+                                      offset: Offset(0, 2),
+                                    )
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.directions_bus,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
                           if (_currentLocation != null)
                             Marker(
                               point: _currentLocation!,
@@ -1551,29 +1610,131 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       ),
                   ],
                 ),
+                if (isWide)
+                  Positioned(
+                    top: 20,
+                    bottom: 20,
+                    left: 20,
+                    width: 75,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.black.withOpacity(0.45)
+                                : Colors.white.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white12
+                                  : Colors.white24,
+                              width: 1.5,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 16,
+                                offset: Offset(0, 4),
+                              )
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              const SizedBox(height: 24),
+                              IconButton(
+                                icon: Icon(Icons.menu, color: Theme.of(context).colorScheme.onSurface, size: 28),
+                                onPressed: () {
+                                  _scaffoldKey.currentState?.openDrawer();
+                                },
+                              ),
+                              const SizedBox(height: 20),
+                              _buildNavIcon(Icons.star, t('favoritos_label'), onTap: () async {
+                                final selectedStop = await Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (context) => const FavoritesScreen())
+                                );
+                                if (selectedStop != null) {
+                                  setState(() {
+                                    _selectedSearchStop = selectedStop;
+                                  });
+                                  _mapController.move(LatLng(selectedStop['lat'], selectedStop['lon']), 16.0);
+                                  _showStopInfo(selectedStop);
+                                }
+                              }),
+                              _buildNavIcon(Icons.notifications_active, t('alertas_label'), onTap: _showAlertsModal, badgeCount: _alertBadgeCount),
+                              _buildNavIcon(Icons.schedule, t('horarios_label'), onTap: _showLinesScheduleModal),
+                              _buildNavIcon(
+                                _showNearbyStops ? Icons.location_on : Icons.location_off, 
+                                t('nearby_stops_label'), 
+                                colorOverride: _showNearbyStops ? const Color(0xFF0054A6) : null,
+                                onTap: () {
+                                  setState(() {
+                                    _showNearbyStops = !_showNearbyStops;
+                                  });
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(_showNearbyStops ? t('nearby_stops_visible') : t('nearby_stops_hidden')),
+                                      duration: const Duration(seconds: 2),
+                                    )
+                                  );
+                                }
+                              ),
+                              const Spacer(),
+                              _buildNavIcon(
+                                Icons.logout, 
+                                t('logout_label'), 
+                                colorOverride: Colors.redAccent,
+                                onTap: () async {
+                                  const storage = FlutterSecureStorage();
+                                  await storage.deleteAll();
+                                  if (context.mounted) {
+                                    Navigator.of(context).pushReplacementNamed('/login');
+                                  }
+                                }
+                              ),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
       
                 // BARRA DE PESQUISA FLUTUANTE À GOOGLE MAPS + BOTÕES DE ROTAS
                 if (!_isNavigating)
                   Positioned(
                     top: 40,
-                    left: 20,
+                    left: isWide ? 110 : 20,
                     child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        width: 340,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(_isSearchExpanded ? 16 : 24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Theme.of(context).brightness == Brightness.dark ? Colors.black54 : Colors.black12,
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            )
-                          ],
-                        ),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(_isSearchExpanded ? 16 : 24),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            width: 340,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.black.withOpacity(0.45)
+                                  : Colors.white.withOpacity(0.55),
+                              borderRadius: BorderRadius.circular(_isSearchExpanded ? 16 : 24),
+                              border: Border.all(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white12
+                                    : Colors.white24,
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.black54 : Colors.black12,
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                )
+                              ],
+                            ),
                         child: Column(
                           children: [
                             if (_isSearchExpanded) ...[
@@ -1714,17 +1875,31 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                           ],
                         ),
                       ),
+                     ),
+                    ),
                       if (_searchResults.isNotEmpty || _originSearchResults.isNotEmpty || (!_isSearchExpanded && _searchController.text.isNotEmpty && _searchFocusNode.hasFocus))
-                        Container(
-                          width: 340,
-                          margin: const EdgeInsets.only(top: 4),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: const [
-                               BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0,4))
-                            ]
-                          ),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                            child: Container(
+                              width: 340,
+                              margin: const EdgeInsets.only(top: 4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.black.withOpacity(0.45)
+                                    : Colors.white.withOpacity(0.55),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.white12
+                                      : Colors.white24,
+                                  width: 1.5,
+                                ),
+                                boxShadow: const [
+                                   BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0,4))
+                                ]
+                              ),
                           constraints: const BoxConstraints(maxHeight: 250),
                           child: ListView.builder(
                             shrinkWrap: true,
@@ -1807,6 +1982,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             }
                           )
                         ),
+                       ),
+                      ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -1857,7 +2034,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     ),
                   ),
                 Positioned(
-                  bottom: 96,
+                  bottom: (showShortcuts && !isWide) ? 220 : 96,
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: "btnThemeToggle",
@@ -1881,7 +2058,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   ),
                 ),
                 Positioned(
-                  bottom: 24,
+                  bottom: (showShortcuts && !isWide) ? 148 : 24,
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: "btnLocation",
@@ -1915,26 +2092,44 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       final bool isWide = MediaQuery.of(context).size.width > 768;
                       
                       return Positioned(
-                        top: isWide ? 16 : null,
-                        bottom: isWide ? 16 : 0,
-                        left: isWide ? 16 : 0,
+                        top: isWide ? 20 : null,
+                        bottom: isWide ? 20 : 0,
+                        left: isWide ? 110 : 0,
                         right: isWide ? null : 0,
                         width: isWide ? 380 : null,
-                        child: Container(
-                          padding: isWide ? const EdgeInsets.all(24) : const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: isWide 
-                                ? BorderRadius.circular(24.0) 
-                                : const BorderRadius.vertical(top: Radius.circular(32.0)),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black26, 
-                                blurRadius: 16, 
-                                offset: Offset(0, -4)
-                              )
-                            ]
-                          ),
+                        child: ClipRRect(
+                          borderRadius: isWide 
+                              ? BorderRadius.circular(24.0) 
+                              : const BorderRadius.vertical(top: Radius.circular(32.0)),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: isWide ? 12 : 0, sigmaY: isWide ? 12 : 0),
+                            child: Container(
+                              padding: isWide ? const EdgeInsets.all(24) : const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                              decoration: BoxDecoration(
+                                color: isWide
+                                    ? (Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.black.withOpacity(0.45)
+                                        : Colors.white.withOpacity(0.55))
+                                    : Theme.of(context).colorScheme.surface,
+                                borderRadius: isWide 
+                                    ? BorderRadius.circular(24.0) 
+                                    : const BorderRadius.vertical(top: Radius.circular(32.0)),
+                                border: isWide
+                                    ? Border.all(
+                                        color: Theme.of(context).brightness == Brightness.dark
+                                            ? Colors.white12
+                                            : Colors.white24,
+                                        width: 1.5,
+                                      )
+                                    : null,
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26, 
+                                    blurRadius: 16, 
+                                    offset: Offset(0, -4)
+                                  )
+                                ]
+                              ),
                           child: SafeArea(
                             child: Column(
                               mainAxisSize: isWide ? MainAxisSize.max : MainAxisSize.min,
@@ -2140,6 +2335,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                             setState(() {
                                               _isTripStarted = true;
                                             });
+                                            if (_navPolylines.isNotEmpty && _navPolylines[0].points.isNotEmpty) {
+                                              _startBusAnimation(_navPolylines[0].points);
+                                            }
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               SnackBar(
                                                 content: Text(t('trip_started_msg')),
@@ -2162,6 +2360,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                         width: double.infinity,
                                         child: ElevatedButton(
                                           onPressed: () {
+                                            _busAnimationTimer?.cancel();
+                                            _busAnimationTimer = null;
                                             setState(() {
                                               _isNavigating = false;
                                               _isTripStarted = false;
@@ -2179,6 +2379,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                               _searchedPlaceLocation = null;
                                               _searchedPlaceName = null;
                                               _closestStopsToSearchedPlace = [];
+                                              _animatedBusLocation = null;
+                                              _busPathIndex = 0;
                                             });
                                           },
                                           style: ElevatedButton.styleFrom(
@@ -2197,8 +2399,88 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                             ),
                           ),
                         ),
-                      );
+                      ),
+                     ),
+                    );
                     }
+                  ),
+                if (showShortcuts)
+                  Positioned(
+                    bottom: 20,
+                    left: 20,
+                    right: isWide ? null : 20,
+                    width: isWide ? 380 : null,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Colors.black.withOpacity(0.45)
+                                : Colors.white.withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white12
+                                  : Colors.white24,
+                              width: 1.5,
+                            ),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, 4))
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _getGreetingMessage(),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  _buildShortcutButton(
+                                    icon: Icons.home,
+                                    label: 'Casa',
+                                    color: const Color(0xFF0054A6),
+                                    onTap: () {
+                                      _searchController.text = "Guimarota";
+                                      _requestNavigation(const LatLng(39.734154, -8.799372));
+                                    },
+                                  ),
+                                  _buildShortcutButton(
+                                    icon: Icons.school,
+                                    label: 'Campus 2',
+                                    color: const Color(0xFF156A40),
+                                    onTap: () {
+                                      _searchController.text = "Campus 2 IPL";
+                                      _requestNavigation(const LatLng(39.733169, -8.820954));
+                                    },
+                                  ),
+                                  _buildShortcutButton(
+                                    icon: Icons.work,
+                                    label: 'Centro',
+                                    color: const Color(0xFFE31C39),
+                                    onTap: () {
+                                      _searchController.text = "Jardim Luís de Camões";
+                                      _requestNavigation(const LatLng(39.745293, -8.806200));
+                                    },
+                                  ),
+                                ],
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   )
               ],
             ),
