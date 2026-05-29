@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, aliased
-from passlib.context import CryptContext
-import models, schemas, database, auth # Certifica-te que o auth.py está na pasta
+import models, schemas, database, auth
+from auth import pwd_context # Certifica-te que o auth.py está na pasta
 from sqlalchemy import func
 from geoalchemy2.elements import WKTElement
 from geoalchemy2 import Geography
@@ -38,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pwd_context importado de auth
 
 # --- ROTAS ---
 from admin_api import admin_router
