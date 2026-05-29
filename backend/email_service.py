@@ -147,13 +147,40 @@ def send_verification_email(email: str, token: str):
 
     msg.attach(MIMEText(html_content, 'html'))
 
+    # Suporte dinâmico a envio via API HTTP do Brevo (Sendinblue) para contornar bloqueio de portas no Render
+    brevo_api_key = os.getenv("BREVO_API_KEY", "")
+    if brevo_api_key:
+        try:
+            import requests
+            url = "https://api.brevo.com/v3/smtp/email"
+            payload = {
+                "sender": {"name": "Go with Mobilis", "email": SMTP_USERNAME or "no-reply@gowithmobilis.com"},
+                "to": [{"email": email}],
+                "subject": "Confirme o seu endereço de e-mail - Go with Mobilis",
+                "htmlContent": html_content
+            }
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "api-key": brevo_api_key
+            }
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            if response.status_code in [200, 201, 202]:
+                print(f"[EMAIL SERVICE] E-mail de confirmação enviado com sucesso via Brevo HTTP API para: {email}")
+                return
+            else:
+                print(f"[EMAIL SERVICE] [ERRO] Falha ao enviar via Brevo API: {response.text}")
+        except Exception as e:
+            print(f"[EMAIL SERVICE] [ERRO] Exceção ao enviar via Brevo API: {e}")
+
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        # SMTP com timeout explícito de 10 segundos para evitar travamento da tarefa em segundo plano
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10)
         server.starttls()
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         server.sendmail(SMTP_SENDER, email, msg.as_string())
         server.close()
-        print(f"[EMAIL SERVICE] E-mail de confirmação enviado com sucesso para: {email}")
+        print(f"[EMAIL SERVICE] E-mail de confirmação enviado com sucesso via SMTP para: {email}")
     except Exception as e:
         print(f"[EMAIL SERVICE] [ERRO] Falha ao enviar e-mail via SMTP: {e}")
-        print(f"[EMAIL SERVICE] [FALLBACK] Certifique-se de que as credenciais nos logs estão ativas para testes.")
+        print(f"[EMAIL SERVICE] [FALLBACK] Se as portas SMTP (587/465) estiverem bloqueadas no Render, solicite o desbloqueio no suporte do Render ou configure a variável 'BREVO_API_KEY'.")
