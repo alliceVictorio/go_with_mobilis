@@ -63,7 +63,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   List<dynamic> _allStops = [];
   bool _showNearbyStops = false;
   dynamic _selectedSearchStop;
-  bool _hasShownAlertPopup = false;
 
   LatLng? _searchedPlaceLocation;
   String? _searchedPlaceName;
@@ -746,128 +745,24 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   }
 
   Future<void> _checkAlertsPopup() async {
-    final alerts = await ApiService.getActiveAlerts();
-    if (!mounted) return;
+    try {
+      final alerts = await ApiService.getActiveAlerts();
+      if (!mounted) return;
 
-    const storage = FlutterSecureStorage();
-    final dismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
-    final dismissedIds = dismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      const storage = FlutterSecureStorage();
+      final dismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
+      final dismissedIds = dismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
-    // Filtramos os alertas que o utilizador ainda não viu para definir o badgeCount
-    final unreadAlerts = alerts.where((alert) {
-      final alertId = alert['id'].toString();
-      return !dismissedIds.contains(alertId);
-    }).toList();
+      // Filtramos os alertas que o utilizador ainda não viu para definir o badgeCount
+      final unreadAlerts = alerts.where((alert) {
+        final alertId = alert['id'].toString();
+        return !dismissedIds.contains(alertId);
+      }).toList();
 
-    setState(() {
-      _alertBadgeCount = unreadAlerts.length;
-    });
-
-    if (_hasShownAlertPopup) return;
-
-    final nowUtc = DateTime.now().toUtc();
-    final List<dynamic> recentAlerts = [];
-
-    DateTime parseDateTime(String dateStr) {
-      try {
-        if (!dateStr.contains('Z') && !dateStr.contains('+') && !dateStr.contains('-')) {
-          final formatted = dateStr.replaceAll(' ', 'T');
-          return DateTime.parse('${formatted}Z');
-        }
-        return DateTime.parse(dateStr);
-      } catch (_) {
-        return DateTime.parse(dateStr);
-      }
-    }
-
-    for (var alert in alerts) {
-      if (alert['created_at'] != null) {
-        try {
-          final createdAt = parseDateTime(alert['created_at'].toString());
-          final createdAtUtc = createdAt.toUtc();
-          final diffMins = nowUtc.difference(createdAtUtc).inMinutes;
-          
-          if (diffMins.abs() <= 30) {
-            recentAlerts.add(alert);
-          }
-        } catch (_) {
-          recentAlerts.add(alert);
-        }
-      } else {
-        recentAlerts.add(alert);
-      }
-    }
-
-    if (recentAlerts.isEmpty) {
-      _hasShownAlertPopup = true;
-      return;
-    }
-
-
-
-    final List<dynamic> alertsToShow = recentAlerts.where((alert) {
-      final alertId = alert['id'].toString();
-      return !dismissedIds.contains(alertId);
-    }).toList();
-
-    if (alertsToShow.isEmpty) {
-      _hasShownAlertPopup = true;
-      return;
-    }
-
-    _hasShownAlertPopup = true;
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-            SizedBox(width: 8),
-            Text('Aviso Importante'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: alertsToShow.map<Widget>((alert) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12.0),
-                child: Text(
-                  alert['message'] ?? '',
-                  style: const TextStyle(fontSize: 15),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              final currentDismissedStr = await storage.read(key: 'dismissed_alert_ids') ?? '';
-              final currentDismissedList = currentDismissedStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-              for (var alert in alertsToShow) {
-                final idStr = alert['id'].toString();
-                if (!currentDismissedList.contains(idStr)) {
-                  currentDismissedList.add(idStr);
-                }
-              }
-              await storage.write(key: 'dismissed_alert_ids', value: currentDismissedList.join(','));
-              setState(() {
-                _alertBadgeCount = 0;
-              });
-            },
-            child: const Text('Compreendi'),
-          )
-        ],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
+      setState(() {
+        _alertBadgeCount = unreadAlerts.length;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadRouteShape(String routeId, Color routeColor) async {
