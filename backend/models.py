@@ -56,6 +56,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     # NOVO: Define se o utilizador é administrador 
     is_admin = Column(Boolean, default=False) 
+    # NOVO: Controlo de verificação de e-mail
+    is_verified = Column(Boolean, default=False)
+    verification_token = Column(String, nullable=True)
 
     favorites = relationship("Favorite", back_populates="owner")
 

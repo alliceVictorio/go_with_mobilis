@@ -31,6 +31,7 @@ class UserResponse(BaseModel):
     profile_picture: Optional[str] = None
     is_active: bool
     is_admin: bool
+    is_verified: bool
 
     class Config:
         from_attributes = True

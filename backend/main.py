@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks, responses
 from sqlalchemy.orm import Session, aliased
 import models, schemas, database, auth
 from auth import pwd_context # Certifica-te que o auth.py está na pasta
@@ -10,6 +10,7 @@ from typing import List
 from datetime import datetime, timedelta
 import zoneinfo
 from sqlalchemy import cast, Time
+from email_service import send_verification_email
 
 # 1. Inicializar a App e Base de Dados
 models.Base.metadata.create_all(bind=database.engine)
@@ -21,6 +22,10 @@ try:
         conn.execute(text("ALTER TABLE routes ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR;"))
+        # Assegurar que utilizadores anteriores não fiquem bloqueados
+        conn.execute(text("UPDATE users SET is_verified = TRUE WHERE is_verified IS NULL;"))
         conn.commit()
         print("Migrações automáticas aplicadas com sucesso!")
 except Exception as e:
@@ -49,15 +54,17 @@ def home():
     return {"status": "Online", "projeto": "Go with Mobilis"}
 
 @app.post("/register", response_model=schemas.UserResponse)
-def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+def register_user(user: schemas.UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(database.get_db)):
     print(f"DEBUG REGISTER: email={user.email}, pwd_len={len(user.password)}, pwd={user.password[:10]}")
-    # Verificar se o email já existe [cite: 20, 58]
+    # Verificar se o email já existe
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email já registado")
 
-    # Encriptar password e guardar [cite: 120]
+    # Encriptar password e gerar token de verificação
     hashed_pwd = pwd_context.hash(user.password)
+    token = str(uuid.uuid4())
+    
     new_user = models.User(
         first_name=user.first_name,
         last_name=user.last_name,
@@ -65,12 +72,18 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(database.get_d
         phone_number=user.phone_number,
         hashed_password=hashed_pwd,
         profile_picture=user.profile_picture,
-        is_admin=user.is_admin
+        is_admin=user.is_admin,
+        is_verified=False,
+        verification_token=token
     )
     
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    
+    # Agendar envio de e-mail de confirmação em segundo plano
+    background_tasks.add_task(send_verification_email, new_user.email, token)
+    
     return new_user
 
 @app.post("/login")
@@ -78,25 +91,223 @@ def login(user_credentials: schemas.UserLogin, db: Session = Depends(database.ge
     # 1. Procura o utilizador
     user = db.query(models.User).filter(models.User.email == user_credentials.email).first()
 
-    # 2. Valida credenciais [cite: 120]
+    # 2. Valida credenciais
     if not user or not pwd_context.verify(user_credentials.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou palavra-passe incorretos"
         )
 
-    # 3. Gera o Token incluindo a claim de admin
+    # 3. Validar se o e-mail está confirmado
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Por favor, confirme o seu e-mail antes de iniciar sessão."
+        )
+
+    # 4. Gera o Token incluindo a claim de admin
     access_token = auth.create_access_token(data={
         "sub": user.email, 
         "is_admin": user.is_admin
     })
 
-    # 4. Retorna o token E o estado de admin para o Frontend 
+    # 5. Retorna o token E o estado de admin para o Frontend 
     return {
         "access_token": access_token, 
         "token_type": "bearer",
         "is_admin": user.is_admin 
     }
+
+@app.get("/verify-email", response_class=responses.HTMLResponse)
+def verify_email(token: str = Query(...), db: Session = Depends(database.get_db)):
+    # Procurar utilizador com este token
+    user = db.query(models.User).filter(models.User.verification_token == token).first()
+    
+    if not user:
+        # Página de erro estilizada
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Erro de Verificação - Go with Mobilis</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: #F8FAFC;
+                    margin: 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100vh;
+                    color: #334155;
+                }
+                .card {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 20px;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+                    text-align: center;
+                    max-width: 450px;
+                    width: 100%;
+                }
+                .icon {
+                    font-size: 60px;
+                    color: #EF4444;
+                    margin-bottom: 20px;
+                    line-height: 1;
+                }
+                h1 {
+                    font-size: 24px;
+                    margin-bottom: 10px;
+                    color: #1E293B;
+                    font-weight: 700;
+                }
+                p {
+                    font-size: 15px;
+                    line-height: 1.6;
+                    color: #64748B;
+                    margin-bottom: 25px;
+                }
+                .btn {
+                    display: inline-block;
+                    background-color: #0054A6;
+                    color: white;
+                    text-decoration: none;
+                    padding: 12px 30px;
+                    border-radius: 30px;
+                    font-weight: 600;
+                    box-shadow: 0 4px 10px rgba(0,84,166,0.2);
+                }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="icon">✕</div>
+                <h1>Link de Verificação Inválido</h1>
+                <p>O token de ativação expirou, já foi utilizado ou é incorreto. Por favor, tente registar-se novamente ou contacte o nosso suporte.</p>
+                <a href="https://go-with-mobilis.netlify.app" class="btn">Ir para o Website</a>
+            </div>
+        </body>
+        </html>
+        """
+
+    # Marcar como verificado e limpar o token
+    user.is_verified = True
+    user.verification_token = None
+    db.commit()
+
+    # Página de sucesso premium e espetacular
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>E-mail Confirmado! - Go with Mobilis</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+                margin: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                color: #F8FAFC;
+                overflow: hidden;
+            }
+            .card {
+                background: rgba(30, 41, 59, 0.7);
+                backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                padding: 50px 40px;
+                border-radius: 24px;
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+                text-align: center;
+                max-width: 480px;
+                width: 90%;
+                animation: fadeInUp 0.8s ease-out;
+            }
+            .icon-wrapper {
+                width: 80px;
+                height: 80px;
+                background: radial-gradient(circle, #8CC63F 0%, #76A832 100%);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 30px auto;
+                box-shadow: 0 8px 20px rgba(140, 198, 63, 0.4);
+                animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both;
+            }
+            .checkmark {
+                font-size: 40px;
+                color: white;
+                font-weight: bold;
+            }
+            h1 {
+                font-size: 26px;
+                margin-top: 0;
+                margin-bottom: 12px;
+                font-weight: 700;
+                color: #FFFFFF;
+                letter-spacing: -0.5px;
+            }
+            p {
+                font-size: 15px;
+                line-height: 1.6;
+                color: #94A3B8;
+                margin-bottom: 30px;
+            }
+            .btn {
+                display: inline-block;
+                background-color: #8CC63F;
+                color: white;
+                text-decoration: none;
+                padding: 14px 35px;
+                border-radius: 30px;
+                font-weight: 600;
+                box-shadow: 0 4px 15px rgba(140, 198, 63, 0.3);
+                transition: all 0.2s ease-in-out;
+            }
+            .btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(140, 198, 63, 0.5);
+            }
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+            @keyframes popIn {
+                from {
+                    opacity: 0;
+                    transform: scale(0.8);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="icon-wrapper">
+                <span class="checkmark">✓</span>
+            </div>
+            <h1>E-mail Confirmado!</h1>
+            <p>Excelente! O seu endereço de e-mail foi validado com sucesso. A sua conta está agora ativa e pronta para ser utilizada.</p>
+            <a href="https://go-with-mobilis.netlify.app" class="btn">Entrar na Aplicação</a>
+        </div>
+    </body>
+    </html>
+    """
 
 from fastapi.security import OAuth2PasswordBearer
 
