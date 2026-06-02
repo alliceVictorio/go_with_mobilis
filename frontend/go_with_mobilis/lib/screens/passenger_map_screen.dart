@@ -70,9 +70,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   String? _searchedPlaceName;
   List<dynamic> _closestStopsToSearchedPlace = [];
   int _alertBadgeCount = 0;
-  Timer? _busAnimationTimer;
-  int _busPathIndex = 0;
-  LatLng? _animatedBusLocation;
+
 
   @override
   void initState() {
@@ -237,7 +235,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   @override
   void dispose() {
-    _busAnimationTimer?.cancel();
     _positionStreamSubscription?.cancel();
     _searchController.removeListener(_onSearchChanged);
     _originController.removeListener(_onOriginChanged);
@@ -292,17 +289,14 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           });
         }
 
-        if (_isNavigating && _alightingStop != null) {
-           _mapController.move(newLoc, 16.0);
+        if (_isNavigating && _alightingStop != null && _isTripStarted) {
+           _mapController.move(newLoc, 16.5);
+           _checkStopProximity(newLoc);
            
-           if (_isTripStarted) {
-             _checkStopProximity(newLoc);
-             
-             final destLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
-             final dist = const Distance().as(LengthUnit.Meter, newLoc, destLoc);
-             if (dist < 50) {
-                _finishNavigation();
-             }
+           final destLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
+           final dist = const Distance().as(LengthUnit.Meter, newLoc, destLoc);
+           if (dist < 50) {
+              _finishNavigation();
            }
         } else {
            if (_lastFetchLocation != null) {
@@ -322,39 +316,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
-  void _startBusAnimation(List<LatLng> pathPoints) {
-    _stopBusAnimation();
-    if (pathPoints.isEmpty) return;
 
-    _busPathIndex = 0;
-    setState(() {
-      _animatedBusLocation = pathPoints[0];
-    });
-
-    _busAnimationTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
-      if (!mounted) return;
-      if (_busPathIndex < pathPoints.length - 1) {
-        _busPathIndex++;
-        setState(() {
-          _animatedBusLocation = pathPoints[_busPathIndex];
-        });
-        _checkStopProximity(_animatedBusLocation!);
-        _mapController.move(_animatedBusLocation!, _mapController.camera.zoom);
-      } else {
-        _stopBusAnimation();
-        _finishNavigation();
-      }
-    });
-  }
-
-  void _stopBusAnimation() {
-    _busAnimationTimer?.cancel();
-    _busAnimationTimer = null;
-    setState(() {
-      _animatedBusLocation = null;
-      _busPathIndex = 0;
-    });
-  }
 
   void _checkStopProximity(LatLng currentLoc) {
     if (!_isNavigating || !_isTripStarted || _routePlanData == null) return;
@@ -430,8 +392,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
   void _finishNavigation() {
     if (!mounted) return;
-    _busAnimationTimer?.cancel();
-    _busAnimationTimer = null;
     setState(() {
       _isNavigating = false;
       _isTripStarted = false;
@@ -452,8 +412,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _searchedPlaceLocation = null;
       _searchedPlaceName = null;
       _closestStopsToSearchedPlace = [];
-      _animatedBusLocation = null;
-      _busPathIndex = 0;
     });
     
     showDialog(
@@ -558,9 +516,41 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         } catch (_) {}
       }
 
-      _navPolylines = [
-        Polyline(points: points, color: routeColor, strokeWidth: 6.0)
-      ];
+      final List<Polyline> newPolylines = [];
+
+      // 1. Caminhada inicial (Origem -> Paragem de Embarque)
+      final startLoc = _originPoint ?? _currentLocation;
+      if (startLoc != null && _boardingStop != null) {
+        final boardingLoc = LatLng(_boardingStop['lat'], _boardingStop['lon']);
+        newPolylines.add(
+          Polyline(
+            points: [startLoc, boardingLoc],
+            color: Colors.blueAccent.withValues(alpha: 0.8),
+            strokeWidth: 5.5,
+            pattern: StrokePattern.dashed(segments: const [2.0, 6.0]),
+          ),
+        );
+      }
+
+      // 2. Trajeto do Autocarro (Paragem de Embarque -> Paragem de Desembarque)
+      newPolylines.add(
+        Polyline(points: points, color: routeColor, strokeWidth: 6.0),
+      );
+
+      // 3. Caminhada final (Paragem de Desembarque -> Destino Final)
+      if (_alightingStop != null && _destinationPoint != null) {
+        final alightingLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
+        newPolylines.add(
+          Polyline(
+            points: [alightingLoc, _destinationPoint!],
+            color: Colors.blueAccent.withValues(alpha: 0.8),
+            strokeWidth: 5.5,
+            pattern: StrokePattern.dashed(segments: const [2.0, 6.0]),
+          ),
+        );
+      }
+
+      _navPolylines = newPolylines;
     });
     
     _mapController.move(_originPoint ?? _currentLocation!, 14.0);
@@ -1031,6 +1021,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                   _isSearchExpanded = true;
                   _searchController.text = stop['name'];
                 });
+                final dest = LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble());
+                _requestNavigation(dest);
               },
             ),
           ],
@@ -1431,31 +1423,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     if (_currentLocation != null || _stops.isNotEmpty || _isNavigating || _selectedSearchStop != null || _searchedPlaceLocation != null)
                       MarkerLayer(
                         markers: [
-                          if (_isTripStarted && _animatedBusLocation != null)
-                            Marker(
-                              point: _animatedBusLocation!,
-                              width: 45,
-                              height: 45,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0054A6), // Azul Mobilis
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2.5),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 4,
-                                      offset: Offset(0, 2),
-                                    )
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.directions_bus,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                            ),
+
                           if (_currentLocation != null)
                             Marker(
                               point: _currentLocation!,
@@ -2100,7 +2068,38 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                         ),
                                       ),
                                     ),
-                                  const Text("Opções de Viagem", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text("Opções de Viagem", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, color: Colors.grey),
+                                        onPressed: () {
+                                          setState(() {
+                                            _isNavigating = false;
+                                            _isTripStarted = false;
+                                            _passedStopIds.clear();
+                                            _navPolylines.clear();
+                                            _searchController.clear();
+                                            _originController.text = "A minha localização";
+                                            _isSearchExpanded = false;
+                                            _originPoint = null;
+                                            _routePlanData = null;
+                                            _routeOptions = null;
+                                            _isRouteExpanded = false;
+                                            _isRoutePanelMinimized = false;
+                                            _selectedSearchStop = null;
+                                            _searchedPlaceLocation = null;
+                                            _searchedPlaceName = null;
+                                            _closestStopsToSearchedPlace = [];
+                                          });
+                                          if (_currentLocation != null) {
+                                            _fetchNearbyStops(_currentLocation!);
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                   const SizedBox(height: 16),
                                   (() {
                                     final listView = ListView.separated(
@@ -2285,8 +2284,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                             setState(() {
                                               _isTripStarted = true;
                                             });
-                                            if (_navPolylines.isNotEmpty && _navPolylines[0].points.isNotEmpty) {
-                                              _startBusAnimation(_navPolylines[0].points);
+                                            if (_currentLocation != null) {
+                                              _mapController.move(_currentLocation!, 16.5);
                                             }
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               SnackBar(
@@ -2310,8 +2309,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                         width: double.infinity,
                                         child: ElevatedButton(
                                           onPressed: () {
-                                            _busAnimationTimer?.cancel();
-                                            _busAnimationTimer = null;
                                             setState(() {
                                               _isNavigating = false;
                                               _isTripStarted = false;
@@ -2329,8 +2326,6 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                               _searchedPlaceLocation = null;
                                               _searchedPlaceName = null;
                                               _closestStopsToSearchedPlace = [];
-                                              _animatedBusLocation = null;
-                                              _busPathIndex = 0;
                                             });
                                           },
                                           style: ElevatedButton.styleFrom(

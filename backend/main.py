@@ -187,7 +187,7 @@ def verify_email(token: str = Query(...), db: Session = Depends(database.get_db)
                 <div class="icon">✕</div>
                 <h1>Link de Verificação Inválido</h1>
                 <p>O token de ativação expirou, já foi utilizado ou é incorreto. Por favor, tente registar-se novamente ou contacte o nosso suporte.</p>
-                <a href="https://gomwithobilis.netlify.app/#/login" class="btn">Ir para o Website</a>
+                <a href="https://gowithmobilis.netlify.app/#/login" class="btn">Ir para o Website</a>
             </div>
         </body>
         </html>
@@ -204,7 +204,7 @@ def verify_email(token: str = Query(...), db: Session = Depends(database.get_db)
     <html>
     <head>
         <meta charset="utf-8">
-        <meta http-equiv="refresh" content="3;url=https://gomwithobilis.netlify.app/#/login">
+        <meta http-equiv="refresh" content="3;url=https://gowithmobilis.netlify.app/#/login">
         <title>E-mail Confirmado! - Go with Mobilis</title>
         <style>
             body {
@@ -306,7 +306,7 @@ def verify_email(token: str = Query(...), db: Session = Depends(database.get_db)
             <h1>E-mail Confirmado!</h1>
             <p>Excelente! O seu endereço de e-mail foi validado com sucesso. A sua conta está agora ativa e pronta para ser utilizada.</p>
             <p style="font-size: 13px; color: #94A3B8; margin-top: -10px; margin-bottom: 25px;">Será redirecionado para a aplicação em 3 segundos...</p>
-            <a href="https://gomwithobilis.netlify.app/#/login" class="btn">Entrar na Aplicação</a>
+            <a href="https://gowithmobilis.netlify.app/#/login" class="btn">Entrar na Aplicação</a>
         </div>
     </body>
     </html>
@@ -404,7 +404,7 @@ def reset_password_page(token: str = Query(...), db: Session = Depends(database.
                 <div class="icon">✕</div>
                 <h1>Link Expirado ou Inválido</h1>
                 <p>O link de recuperação de palavra-passe é inválido, expirou ou já foi utilizado. Solicite uma nova recuperação a partir da aplicação.</p>
-                <a href="https://gomwithobilis.netlify.app/#/login" class="btn">Voltar ao Website</a>
+                <a href="https://gowithmobilis.netlify.app/#/login" class="btn">Voltar ao Website</a>
             </div>
         </body>
         </html>
@@ -622,11 +622,11 @@ def reset_password_page(token: str = Query(...), db: Session = Depends(database.
                             <h1>Palavra-passe Redefinida!</h1>
                             <p class="subtitle">A sua palavra-passe foi alterada com sucesso. Já pode iniciar sessão no site.</p>
                             <p style="font-size: 13px; color: #94A3B8; margin-top: 15px;">Redirecionando em 3 segundos...</p>
-                            <a href="https://gomwithobilis.netlify.app/#/login" class="btn" style="text-decoration:none; display:block;">Entrar no Website</a>
+                            <a href="https://gowithmobilis.netlify.app/#/login" class="btn" style="text-decoration:none; display:block;">Entrar no Website</a>
                         `;
                         
                         setTimeout(() => {{
-                            window.location.href = "https://gomwithobilis.netlify.app/#/login";
+                            window.location.href = "https://gowithmobilis.netlify.app/#/login";
                         }}, 3000);
                     }} else {{
                         errorAlert.innerText = data.detail || 'Ocorreu um erro ao redefinir a palavra-passe.';
