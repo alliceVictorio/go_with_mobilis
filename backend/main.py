@@ -34,6 +34,12 @@ except Exception as e:
 
 app = FastAPI(title="Go with Mobilis API")
 
+from fastapi.staticfiles import StaticFiles
+import os
+
+os.makedirs("pdfs", exist_ok=True)
+app.mount("/pdf", StaticFiles(directory="pdfs"), name="pdf")
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(

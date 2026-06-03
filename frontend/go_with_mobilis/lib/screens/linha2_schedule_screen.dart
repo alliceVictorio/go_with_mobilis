@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'pdf_viewer_screen.dart';
 
 class Linha2ScheduleScreen extends StatelessWidget {
   const Linha2ScheduleScreen({super.key});
@@ -103,6 +104,22 @@ class Linha2ScheduleScreen extends StatelessWidget {
           backgroundColor: Colors.red, // Linha 2 is Red
           elevation: 0,
           leading: const BackButton(color: Colors.white),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+              tooltip: 'Ver Guia Oficial (PDF)',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PdfViewerScreen(
+                      lineShortName: 'Linha 2',
+                      themeColor: Color(0xFFE31C39),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
           bottom: const TabBar(
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white54,
