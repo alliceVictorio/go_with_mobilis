@@ -1049,6 +1049,27 @@ def remove_favorite(
 def get_active_alerts(db: Session = Depends(database.get_db)):
     return db.query(models.Alert).filter(models.Alert.is_active == True).order_by(models.Alert.id.desc()).all()
 
+def get_walking_route(from_lat: float, from_lon: float, to_lat: float, to_lon: float) -> list:
+    import urllib.request
+    import json
+    url = f"https://routing.openstreetmap.de/routed-foot/route/v1/foot/{from_lon},{from_lat};{to_lon},{to_lat}?geometries=geojson&overview=full"
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={'User-Agent': 'GoWithMobilis/1.0'}
+        )
+        with urllib.request.urlopen(req, timeout=2.0) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode())
+                if data.get("routes"):
+                    geometry = data["routes"][0]["geometry"]
+                    if geometry.get("type") == "LineString":
+                        return [{"lat": coords[1], "lon": coords[0]} for coords in geometry["coordinates"]]
+    except Exception as e:
+        print(f"Error fetching OSRM walking route: {e}")
+    # Fallback to straight line
+    return [{"lat": from_lat, "lon": from_lon}, {"lat": to_lat, "lon": to_lon}]
+
 @app.get("/navigate", response_model=List[schemas.RoutePlanResponse], summary="Obter Rota de Navegação")
 def get_navigation_route(
     from_lat: float = Query(..., description="Latitude de origem"),
@@ -1068,6 +1089,13 @@ def get_navigation_route(
     # por isso é mais seguro assumir full control no backend:
     search_time = pt_now - timedelta(minutes=1)
     search_time_str = search_time.strftime("%H:%M:%S")
+
+    walking_cache = {}
+    def get_cached_walking_route(lat1, lon1, lat2, lon2):
+        key = (lat1, lon1, lat2, lon2)
+        if key not in walking_cache:
+            walking_cache[key] = get_walking_route(lat1, lon1, lat2, lon2)
+        return walking_cache[key]
 
     # Mapear dia da semana para o Calendar
     day_mapping = {
@@ -1275,6 +1303,9 @@ def get_navigation_route(
             
             points = points[start_idx:end_idx+1]
 
+        walking_to_boarding = get_cached_walking_route(from_lat, from_lon, o_stop.lat, o_stop.lon)
+        walking_to_destination = get_cached_walking_route(d_stop.lat, d_stop.lon, to_lat, to_lon)
+
         responses.append({
             "route_id": trip.route_id,
             "route_name": route_name,
@@ -1295,7 +1326,9 @@ def get_navigation_route(
                 "lon": d_stop.lon
             },
             "intermediate_stops": intermediate_stops,
-            "shape_coordinates": points
+            "shape_coordinates": points,
+            "walking_to_boarding": walking_to_boarding,
+            "walking_to_destination": walking_to_destination
         })
 
     return responses

@@ -122,6 +122,8 @@ class RoutePlanResponse(BaseModel):
     alighting_stop: NavigationStop
     intermediate_stops: List[NavigationStop]
     shape_coordinates: List[Coordinate]
+    walking_to_boarding: List[Coordinate] = []
+    walking_to_destination: List[Coordinate] = []
 
 class UpcomingBusResponse(BaseModel):
     route_id: str

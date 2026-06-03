@@ -521,10 +521,23 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       // 1. Caminhada inicial (Origem -> Paragem de Embarque)
       final startLoc = _originPoint ?? _currentLocation;
       if (startLoc != null && _boardingStop != null) {
-        final boardingLoc = LatLng(_boardingStop['lat'], _boardingStop['lon']);
+        List<LatLng> walkStartPoints = [];
+        if (routePlan['walking_to_boarding'] != null) {
+          try {
+            final list = routePlan['walking_to_boarding'] as List<dynamic>;
+            walkStartPoints = list.map((pt) {
+              final map = pt as Map<String, dynamic>;
+              return LatLng((map['lat'] as num).toDouble(), (map['lon'] as num).toDouble());
+            }).toList();
+          } catch (_) {}
+        }
+        if (walkStartPoints.isEmpty) {
+          final boardingLoc = LatLng(_boardingStop['lat'], _boardingStop['lon']);
+          walkStartPoints = [startLoc, boardingLoc];
+        }
         newPolylines.add(
           Polyline(
-            points: [startLoc, boardingLoc],
+            points: walkStartPoints,
             color: Colors.blueAccent.withValues(alpha: 0.8),
             strokeWidth: 5.5,
             pattern: StrokePattern.dashed(segments: const [2.0, 6.0]),
@@ -539,10 +552,23 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
       // 3. Caminhada final (Paragem de Desembarque -> Destino Final)
       if (_alightingStop != null && _destinationPoint != null) {
-        final alightingLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
+        List<LatLng> walkEndPoints = [];
+        if (routePlan['walking_to_destination'] != null) {
+          try {
+            final list = routePlan['walking_to_destination'] as List<dynamic>;
+            walkEndPoints = list.map((pt) {
+              final map = pt as Map<String, dynamic>;
+              return LatLng((map['lat'] as num).toDouble(), (map['lon'] as num).toDouble());
+            }).toList();
+          } catch (_) {}
+        }
+        if (walkEndPoints.isEmpty) {
+          final alightingLoc = LatLng(_alightingStop['lat'], _alightingStop['lon']);
+          walkEndPoints = [alightingLoc, _destinationPoint!];
+        }
         newPolylines.add(
           Polyline(
-            points: [alightingLoc, _destinationPoint!],
+            points: walkEndPoints,
             color: Colors.blueAccent.withValues(alpha: 0.8),
             strokeWidth: 5.5,
             pattern: StrokePattern.dashed(segments: const [2.0, 6.0]),
