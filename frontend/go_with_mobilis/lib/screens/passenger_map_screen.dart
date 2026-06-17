@@ -32,6 +32,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   List<dynamic> _stops = [];
   List<Polyline> _polylines = [];
   String? _activeRouteId;
+  List<dynamic> _activeRouteStops = [];
   bool _isAdmin = false;
   bool _isGuest = false;
   bool _isLoading = true;
@@ -547,7 +548,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
 
       // 2. Trajeto do Autocarro (Paragem de Embarque -> Paragem de Desembarque)
       newPolylines.add(
-        Polyline(points: points, color: routeColor, strokeWidth: 6.0),
+        Polyline(points: points, color: routeColor, strokeWidth: 9.0),
       );
 
       // 3. Caminhada final (Paragem de Desembarque -> Destino Final)
@@ -831,6 +832,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       setState(() {
         _polylines = [];
         _activeRouteId = null;
+        _activeRouteStops = [];
       });
       return;
     }
@@ -847,15 +849,37 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
         Polyline(
           points: points,
           color: routeColor,
-          strokeWidth: 4.5,
+          strokeWidth: 8.0,
         )
       );
+    }
+
+    List<dynamic> routeStops = [];
+    try {
+      final stopTimes = await ApiService.getStopTimes(routeId);
+      final seenStops = <String>{};
+      for (var st in stopTimes) {
+        final stopId = st['stop_id'].toString();
+        if (!seenStops.contains(stopId)) {
+          seenStops.add(stopId);
+          final stopMatch = _allStops.firstWhere(
+            (s) => s['id'].toString() == stopId,
+            orElse: () => null,
+          );
+          if (stopMatch != null) {
+            routeStops.add(stopMatch);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Erro ao processar paragens da rota: $e");
     }
     
     if (mounted) {
       setState(() {
         _polylines = polylines;
         _activeRouteId = routeId;
+        _activeRouteStops = routeStops;
       });
     }
   }
@@ -1320,6 +1344,29 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     );
   }
 
+  Widget _buildStopDot(dynamic stop) {
+    return GestureDetector(
+      onTap: () => _showStopInfo(stop),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.black87, width: 2.0),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 3,
+                offset: Offset(0, 1),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -1440,7 +1487,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                     TileLayer(
                       urlTemplate: Theme.of(context).brightness == Brightness.dark
                           ? 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-                          : 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                          : 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
                       userAgentPackageName: 'com.mobilis.app',
                     ),
                     PolylineLayer(
@@ -1486,24 +1533,41 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                 ),
                               );
                             }),
+                          if (!_isNavigating && _activeRouteId != null && _activeRouteStops.isNotEmpty)
+                            ..._activeRouteStops.map((stop) {
+                              return Marker(
+                                point: LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()),
+                                width: 14,
+                                height: 14,
+                                child: _buildStopDot(stop),
+                              );
+                            }),
                           if (_isNavigating && _destinationPoint != null)
                             Marker(
                               point: _destinationPoint!,
                               width: 40, height: 40,
-                              child: const Icon(Icons.stars, color: Colors.purple, size: 40)
+                              child: const Icon(Icons.location_on, color: Colors.red, size: 40)
                             ),
                           if (_isNavigating && _boardingStop != null)
                             Marker(
-                              point: LatLng(_boardingStop['lat'], _boardingStop['lon']),
-                              width: 40, height: 40,
-                              child: const Icon(Icons.location_on, color: Colors.green, size: 40)
+                              point: LatLng((_boardingStop['lat'] as num).toDouble(), (_boardingStop['lon'] as num).toDouble()),
+                              width: 14, height: 14,
+                              child: _buildStopDot(_boardingStop),
                             ),
                           if (_isNavigating && _alightingStop != null)
                             Marker(
-                              point: LatLng(_alightingStop['lat'], _alightingStop['lon']),
-                              width: 40, height: 40,
-                              child: const Icon(Icons.location_on, color: Colors.red, size: 40)
+                              point: LatLng((_alightingStop['lat'] as num).toDouble(), (_alightingStop['lon'] as num).toDouble()),
+                              width: 14, height: 14,
+                              child: _buildStopDot(_alightingStop),
                             ),
+                          if (_isNavigating && _routePlanData != null && _routePlanData!['intermediate_stops'] != null)
+                            ...(_routePlanData!['intermediate_stops'] as List<dynamic>).map((stop) {
+                              return Marker(
+                                point: LatLng((stop['lat'] as num).toDouble(), (stop['lon'] as num).toDouble()),
+                                width: 14, height: 14,
+                                child: _buildStopDot(stop),
+                              );
+                            }),
                           if (_selectedSearchStop != null)
                             Marker(
                               point: LatLng((_selectedSearchStop['lat'] as num).toDouble(), (_selectedSearchStop['lon'] as num).toDouble()),
