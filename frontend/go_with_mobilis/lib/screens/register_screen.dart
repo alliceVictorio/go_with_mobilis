@@ -131,7 +131,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Conta criada com sucesso! Podes iniciar sessão.', style: TextStyle(color: Colors.white)), backgroundColor: Color(0xFF156A40))
+        const SnackBar(content: Text('Conta criada com sucesso! Confirme no seu e-mail para iniciar a sessão.', style: TextStyle(color: Colors.white)), backgroundColor: Color(0xFF156A40))
       );
       Navigator.of(context).pop(); // Volta ao login
     } else {

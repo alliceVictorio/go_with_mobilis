@@ -418,7 +418,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Chegou ao seu destino! 🎉'),
+        title: const Text('Chegou ao seu destino!'),
         content: const Text('Com a Mobilis, a sua viagem chegou ao fim com sucesso.'),
         actions: [
           TextButton(
@@ -995,7 +995,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                       final success = await ApiService.addFavorite(stop['id'].toString());
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(success ? 'Paragem Guardada! 🤍' : 'Erro ao guardar'),
+                          content: Text(success ? 'Paragem Guardada!' : 'Erro ao guardar'),
                           backgroundColor: success ? const Color(0xFF8CC63F) : Colors.redAccent,
                         ));
                       }

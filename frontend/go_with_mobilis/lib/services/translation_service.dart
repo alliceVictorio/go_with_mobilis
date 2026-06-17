@@ -39,7 +39,7 @@ class TranslationService {
       'passwords_dont_match': 'As palavras-passe não coincidem.',
       'password_req_hint': 'A palavra-passe deve ter pelo menos 7 caracteres, incluindo letras e números.',
       'invalid_phone': 'Número de telemóvel inválido. Insira 9 dígitos (ex: 912345678).',
-      'register_success': 'Conta criada com sucesso! Podes iniciar sessão.',
+      'register_success': 'Conta criada com sucesso! Confirme no seu e-mail para iniciar a sessão.',
       'register_btn': 'Registar conta',
       'already_have_account': 'Já tem uma conta? ',
       'login_now': 'Iniciar sessão',
@@ -55,7 +55,7 @@ class TranslationService {
       // Profile
       'profile_title': 'Definições da Conta',
       'profile_load_error': 'Erro ao carregar perfil.',
-      'profile_update_success': 'Perfil atualizado com sucesso! ✨',
+      'profile_update_success': 'Perfil atualizado com sucesso!',
       'profile_update_error': 'Ocorreu um erro ao atualizar o perfil.',
       'change_password_title': 'Alterar Palavra-passe',
       'new_password': 'Nova Palavra-passe',
@@ -78,7 +78,7 @@ class TranslationService {
       'stop_removed': 'Paragem removida dos favoritos',
       'stop_remove_error': 'Erro ao remover favorito',
       'guest_fav_prompt': 'Inicie sessão para guardar favoritos!',
-      'stop_saved': 'Paragem Guardada! 🤍',
+      'stop_saved': 'Paragem Guardada!',
       'stop_save_error': 'Erro ao guardar',
 
       // Map & Drawer
@@ -98,7 +98,7 @@ class TranslationService {
       'server_error': 'Erro ao contactar o servidor.',
       'no_trips': 'Já não há circulações para este destino hoje',
       'trip_options': 'Opções de Viagem',
-      'arrived_dest_title': 'Chegou ao seu destino! 🎉',
+      'arrived_dest_title': 'Chegou ao seu destino!',
       'arrived_dest_desc': 'Com a Mobilis, a sua viagem chegou ao fim com sucesso.',
       'great_btn': 'MUITO BEM',
       'nearby_stops_visible': 'Paragens próximas visíveis.',
@@ -197,7 +197,7 @@ class TranslationService {
       'passwords_dont_match': 'Passwords do not match.',
       'password_req_hint': 'The password must have at least 7 characters, including letters and numbers.',
       'invalid_phone': 'Invalid phone number. Enter 9 digits (ex: 912345678).',
-      'register_success': 'Account created successfully! You can now log in.',
+      'register_success': 'Account created successfully! Please confirm your email to log in.',
       'register_btn': 'Register account',
       'already_have_account': 'Already have an account? ',
       'login_now': 'Log in now',
@@ -213,7 +213,7 @@ class TranslationService {
       // Profile
       'profile_title': 'Account Settings',
       'profile_load_error': 'Error loading profile.',
-      'profile_update_success': 'Profile updated successfully! ✨',
+      'profile_update_success': 'Profile updated successfully!',
       'profile_update_error': 'An error occurred while updating profile.',
       'change_password_title': 'Change Password',
       'new_password': 'New Password',
@@ -236,7 +236,7 @@ class TranslationService {
       'stop_removed': 'Stop removed from favorites',
       'stop_remove_error': 'Error removing favorite',
       'guest_fav_prompt': 'Log in to save favorites!',
-      'stop_saved': 'Stop Saved! 🤍',
+      'stop_saved': 'Stop Saved!',
       'stop_save_error': 'Error saving',
 
       // Map & Drawer
@@ -256,7 +256,7 @@ class TranslationService {
       'server_error': 'Error connecting to the server.',
       'no_trips': 'No more circulations for this destination today',
       'trip_options': 'Trip Options',
-      'arrived_dest_title': 'Arrived at your destination! 🎉',
+      'arrived_dest_title': 'Arrived at your destination!',
       'arrived_dest_desc': 'With Mobilis, your trip has completed successfully.',
       'great_btn': 'EXCELLENT',
       'nearby_stops_visible': 'Nearby stops visible.',

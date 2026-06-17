@@ -143,7 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Perfil atualizado com sucesso! ✨'),
+            content: Text('Perfil atualizado com sucesso!'),
             backgroundColor: Color(0xFF156A40),
           ),
         );
@@ -364,7 +364,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             if (success) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Palavra-passe alterada com sucesso! ✨'),
+                                  content: Text('Palavra-passe alterada com sucesso!'),
                                   backgroundColor: Color(0xFF156A40),
                                 ),
                               );
