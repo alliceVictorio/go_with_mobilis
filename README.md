@@ -47,7 +47,7 @@ graph TD
 | **Flutter (Dart)** | Aplicação Móvel | Permite desenvolvimento multiplataforma nativo e de alta performance (60fps), com suporte excelente a mapas e consumo assíncrono de APIs. |
 | **FastAPI (Python)** | Servidor / API REST | Extremamente rápido (baseado em Starlette e Pydantic), gera documentação interativa automática (Swagger UI) e suporta programação assíncrona (`async/await`). |
 | **PostgreSQL + PostGIS** | Base de Dados | Padrão da indústria para armazenamento relacional e dados geográficos. A extensão PostGIS permite queries espaciais eficientes para geolocalização e proximidade. |
-| **flutter_map & OpenStreetMap** | Visualização de Mapas | Alternativa de código aberto à API do Google Maps. Oferece flexibilidade total para desenhar trajetos customizados (polylines) e marcadores sem custos de licenciamento. |
+| **flutter_map & Google Maps / CartoDB** | Visualização de Mapas | Integração de mapas com Google Maps (Light Mode) e CartoDB (Dark Mode) para flexibilidade de estilização de rotas e marcadores. |
 | **Neon.tech & Render** | Alojamento Cloud | Serviços modernos e gratuitos que permitem colocar a base de dados (Neon) e o backend (Render) online em minutos, facilitando o trabalho colaborativo e a demonstração final. |
 
 ---
