@@ -291,6 +291,49 @@ A geolocalização utiliza o plugin `geolocator` para obter a posição GPS reat
   3. *Utilizadores*: Filtro de pesquisa de contas e comutador para promoção a administrador.
   4. *Alertas (CRUD)*: Menu completo para criar, editar e eliminar avisos de serviço exibidos na Home de todos os utilizadores.
 
+#### Explicação de Código: Gestão de Estado BLoC e Cache PDF
+Para garantir resiliência offline, o fluxo de carregamento de horários em PDF utiliza a combinação do padrão **BLoC** e do serviço **`PdfCacheService`**. O código abaixo (retirado de `pdf_bloc.dart`) ilustra como o estado é gerido reativamente, com verificação de cache física local no dispositivo:
+
+```dart
+class PdfBloc extends Bloc<PdfEvent, PdfState> {
+  PdfBloc() : super(PdfInitial()) {
+    on<LoadPdfEvent>((event, emit) async {
+      emit(PdfLoading());
+      try {
+        final lineName = event.lineShortName.replaceAll(RegExp(r'[a-zA-Z\s]'), '').trim();
+
+        if (kIsWeb) {
+          // No navegador (Web), verifica online se o PDF está acessível no backend
+          final url = Uri.parse('${ApiService.baseUrl}/pdf/$lineName.pdf');
+          final response = await http.head(url).timeout(const Duration(seconds: 5));
+          if (response.statusCode == 200) {
+            emit(PdfLoadedLocal(url.toString(), event.lineShortName));
+          } else {
+            throw HttpException('Horário não disponível no servidor.');
+          }
+          return;
+        }
+
+        // Em Android/iOS, verifica se o PDF já está em cache local
+        final isCached = await PdfCacheService.isPdfCached(lineName);
+        if (isCached) {
+          final file = await PdfCacheService.getCachedPdfFile(lineName);
+          emit(PdfLoadedLocal(file.path, event.lineShortName));
+        } else {
+          // Se não existir localmente, efetua o download e guarda na cache física
+          final path = await PdfCacheService.downloadAndCachePdf(lineName);
+          emit(PdfLoadedLocal(path, event.lineShortName));
+        }
+      } on SocketException catch (_) {
+        emit(PdfError('Sem ligação à Internet. É necessária ligação de rede para efetuar o primeiro download deste horário.'));
+      } catch (e) {
+        emit(PdfError('Erro ao carregar o horário. Verifique a sua ligação.'));
+      }
+    });
+  }
+}
+```
+
 ---
 
 ### 7.2. Camada Backend (Python/FastAPI)
@@ -300,12 +343,8 @@ Desenvolvido segundo especificações assíncronas assentes em Starlette e Pydan
 #### Modelo de Dados GTFS (SQLAlchemy ORM)
 Povoado através de transações de importação automatizadas (`import_all_gtfs.py`), o banco mapeia as paragens (PostGIS `POINT` SRID 4326) e trajetos (PostGIS `LINESTRING`).
 
-#### Lógica Geoespacial (PostGIS)
-* **Paragens Próximas**: Recebe a localização GPS float, converte em `POINT` e corre queries espaciais indexadas (`ST_DWithin` e `ST_Distance`) no PostgreSQL Neon para ordenar paragens por distância a pé.
-* **Trajetos**: Converte as linhas espaciais em coleções JSON de coordenadas reativas.
-
 #### Segurança e Tokens (JWT)
-* passwords encriptadas com **Passlib** (algoritmo **bcrypt**).
+* Passwords encriptadas com **Passlib** (algoritmo **bcrypt**).
 * Tokens **JWT** (algoritmo **HS256**) assinados pelo servidor contendo claims de utilizador. Os clientes móveis guardam o token cifrado recorrendo a chaves de hardware do telemóvel (**Android Keystore** e **iOS Keychain**) via `flutter_secure_storage`.
 
 #### Serviço de E-mail Brevo (REST HTTP)
@@ -313,8 +352,178 @@ Para contornar o bloqueio de portas SMTP do Render, o módulo `email_service.py`
 
 #### Infraestrutura Cloud
 * **Render.com**: Alojamento do código FastAPI com Continuous Deployment (CD) direto a partir do GitHub.
-* **Neon.tech**: Cluster PostgreSQL geográfico Serverless com auto-escalamento e suspensão por inatividade (*Scale-to-Zero*), com conexão segura cifrada (`sslmode=require`).
+* **Neon.tech**: Cluster PostgreSQL geográfico Serverless com auto-escalamento e conexão segura cifrada (`sslmode=require`).
 * **Netlify**: Alojamento e deploy automático de interfaces estáticas web do ecossistema.
+
+#### Explicação de Código: Computação Geoespacial com PostGIS
+A funcionalidade mais crítica do backend é a determinação reativa de paragens a pé próximas do utilizador. Em vez de calcular distâncias em memória no servidor, a computação é delegada ao PostgreSQL/PostGIS.
+O excerto de código abaixo (de `main.py`) ilustra como o backend converte as coordenadas GPS, aplica conversão geográfica e utiliza a função indexada **`ST_DWithin`** para limitar a busca a um raio de 500 metros:
+
+```python
+# 1. Converter coordenadas recebidas para elemento de Geometria POINT (SRID 4326)
+target_point = WKTElement(f'POINT({lon} {lat})', srid=4326)
+
+# 2. Calcular a distância em metros convertendo para a extensão genérica Geography
+distance_col = func.ST_Distance(
+    func.cast(models.Stop.geom, Geography),
+    func.cast(target_point, Geography)
+).label('distance')
+
+# 3. Executar query SQL que filtra paragens a <= 500 metros e as ordena por proximidade
+stops_query = db.query(
+    models.Stop.id,
+    models.Stop.name,
+    func.ST_Y(models.Stop.geom).label('lat'),
+    func.ST_X(models.Stop.geom).label('lon'),
+    distance_col
+).filter(
+    func.ST_DWithin(
+        func.cast(models.Stop.geom, Geography),
+        func.cast(target_point, Geography),
+        500  # Raio de busca limite em metros
+    )
+).order_by("distance").all()
+```
+
+---
+
+### 7.3. Diagramas de Arquitetura e Dados
+
+Para melhor ilustrar a organização do ecossistema **Go with Mobilis**, os diagramas abaixo descrevem a arquitetura lógica e a modelação relacional do banco de dados.
+
+#### 7.3.1. Diagrama de Arquitetura Lógica do Sistema
+A arquitetura assenta numa estrutura clássica de camadas descentralizadas, onde o cliente Flutter interage assincronamente com a API REST, que por sua vez gere a persistência e interage com serviços SaaS de suporte.
+
+```mermaid
+graph TD
+    subgraph Cliente ["Camada Cliente (Flutter Mobile/Web)"]
+        UI["Ecrãs (UI)<br>- passenger_map_screen<br>- admin_panel_screen<br>- login/register/profile"]
+        BLoC["Gestão de Estado (BLoC)<br>- PdfBloc<br>- AuthBloc/MapBloc"]
+        Cache["Armazenamento Local<br>- Secure Storage (JWT)<br>- SharedPreferences<br>- pdf_cache_service"]
+    end
+
+    subgraph API ["Camada Servidor (Python/FastAPI)"]
+        Router["APIs REST Router (FastAPI)<br>- /auth (Registo/Login)<br>- /stops (Geo e Horários)<br>- /routes (Linhas e Trajetos)<br>- /alerts (Alertas CRUD)<br>- /favorites"]
+        Auth["Serviço de Autenticação<br>- JWT / Passlib (Bcrypt)"]
+        Geospatial["Lógica Geoespacial (SQLAlchemy)<br>- Computação de Paragens Próximas<br>- Linhas Espaciais (Shapes)"]
+    end
+
+    subgraph BD ["Camada de Persistência (PostgreSQL Serverless)"]
+        PostGIS["Base de Dados Neon (PostGIS)<br>- Stops / Shapes / Routes (GTFS)<br>- Users / Favorites / Alerts"]
+    end
+
+    subgraph Ext ["Serviços Externos (SaaS)"]
+        Brevo["Brevo API<br>- E-mails Transacionais HTTP"]
+        OSM["OSRM API<br>- Rota Pedonal (Foot Routing)"]
+        MapTiles["Map Tile Servers<br>- Google Maps (Light)<br>- CartoDB (Dark Matter)"]
+    end
+
+    UI --> BLoC
+    BLoC --> Cache
+    BLoC --> Router
+    Router --> Auth
+    Router --> Geospatial
+    Geospatial --> PostGIS
+    Router --> Brevo
+    Geospatial --> OSM
+    UI --> MapTiles
+```
+
+#### 7.3.2. Diagrama de Entidade-Associação (ERD) da Base de Dados
+O esquema físico baseia-se na especificação relacional GTFS. As tabelas espaciais (`stops` e `shapes`) contêm campos de geometria geográfica processados via PostGIS. As tabelas de utilizadores, favoritos e alertas complementam a aplicação sem interferir na integridade do feed de trânsito.
+
+```mermaid
+erDiagram
+    USERS {
+        int id PK
+        string first_name
+        string last_name
+        string email UK
+        string hashed_password
+        string profile_picture
+        boolean is_active
+        boolean is_admin
+        boolean is_verified
+        string verification_token
+        string reset_token
+    }
+    FAVORITES {
+        int id PK
+        string stop_id FK
+        string route_id FK
+        int user_id FK
+    }
+    ALERTS {
+        int id PK
+        string message
+        boolean is_active
+        string created_at
+    }
+    STOPS {
+        string id PK
+        string name
+        geometry geom "POINT"
+        boolean is_active
+    }
+    ROUTES {
+        string id PK
+        string short_name
+        string long_name
+        string color
+        boolean is_active
+    }
+    TRIPS {
+        string id PK
+        string route_id FK
+        string service_id FK
+        string shape_id FK
+        string headsign
+    }
+    STOP_TIMES {
+        int id PK
+        string trip_id FK
+        string stop_id FK
+        string arrival_time
+        int stop_sequence
+    }
+    CALENDAR {
+        string service_id PK
+        int monday
+        int tuesday
+        int wednesday
+        int thursday
+        int friday
+        int saturday
+        int sunday
+        string start_date
+        string end_date
+    }
+    SHAPES {
+        string shape_id PK
+        geometry geom "LINESTRING"
+    }
+    FREQUENCIES {
+        int id PK
+        string trip_id FK
+        time start_time
+        time end_time
+        int headway_secs
+    }
+    AGENCY {
+        string agency_id PK
+        string agency_name
+        string agency_url
+        string agency_timezone
+    }
+
+    USERS ||--o{ FAVORITES : owns
+    ROUTES ||--o{ TRIPS : contains
+    CALENDAR ||--o{ TRIPS : operates
+    SHAPES ||--o{ TRIPS : shapes
+    TRIPS ||--o{ STOP_TIMES : schedules
+    STOPS ||--o{ STOP_TIMES : visited_at
+    TRIPS ||--o{ FREQUENCIES : repeats
+```
 
 ---
 
@@ -332,3 +541,31 @@ Integração de passes desmaterializados diretamente na aplicação.
 * **Tecnologia NFC**: Permite validar o passe aproximando o telemóvel do leitor (semelhante a cartões bancários).
 * **QR Codes Dinâmicos**: Códigos gerados na app que mudam a cada poucos segundos para prevenir fraudes, lidos por scanner no autocarro.
 * **Bluetooth Hands-Free**: Validação automática por proximidade sem necessidade de retirar o telemóvel do bolso.
+
+---
+
+## 9. Validação e Testes
+
+Para garantir a qualidade, robustez e conformidade da plataforma, foi executado um plano estruturado de validação lógica e funcional.
+
+### 9.1. Testes de Consistência de Dados e Integridade (Backend)
+Antes do povoamento em produção, os dados GTFS recolhidos manualmente foram validados através de scripts automatizados de consistência:
+* **Script `import_all_gtfs.py`**: Garante que todas as referências de chaves estrangeiras entre as tabelas `stops`, `trips`, `routes` e `stop_times` são válidas, abortando a transação em caso de paragens inexistentes ou horários órfãos.
+* **Script `generate_map_check.py`**: Gera um ficheiro HTML interativo (`check_stops.html`) que projeta as coordenadas inseridas na base de dados diretamente sobre o mapa real, permitindo a validação visual da posição física exata das paragens e traçados em Leiria antes do deployment.
+
+### 9.2. Testes Funcionais e Cenários de Integração (Manual)
+Foram executados testes de caixa preta com simulação de hardware nos emuladores e dispositivos reais:
+* **Fluxo de Autenticação JWT e Segurança**: Validou-se que tokens JWT corrompidos ou expirados são rejeitados de imediato pelo middleware do FastAPI. Confirmou-se que apenas utilizadores promovidos a administradores (`is_admin = true`) conseguem acesso ao painel de gestão.
+* **Geolocalização e Proximidade Reativa**: Utilizando ferramentas de simulação de rota GPS (GPX playback), testou-se o comportamento do mapa em movimento. O sistema identificou com sucesso a chegada à paragem de embarque, modificando instantaneamente o painel de navegação para o modo de acompanhamento **"Em viagem"**.
+* **Comportamento Resiliente Offline**: Simulou-se a perda total de rede de dados (modo avião). A aplicação foi capaz de carregar e ler os horários em formato PDF previamente guardados no sistema de ficheiros local (`pdf_cache_service`), informando devidamente o utilizador sobre a indisponibilidade de atualizar favoritos na nuvem sem gerar falhas críticas (*crashes*).
+* **Comutação de Map Tiles (Modos Claro e Escuro)**: Validou-se que a transição estética da aplicação altera corretamente o servidor de azulejos raster (Google Maps Tiles para o modo claro, CartoDB Dark Matter para o modo escuro) sem fugas de memória ou degradação na taxa de fotogramas (mantendo-se a 60 FPS).
+
+---
+
+## 10. Conclusão
+
+O desenvolvimento da solução **Go with Mobilis** atingiu com sucesso todos os objetivos propostos para o desenvolvimento deste projeto informático. O ecossistema concebido provou ser uma resposta tecnológica viável, integrando de forma harmoniosa aplicações móveis modernas (Flutter), processamento de dados geoespaciais em tempo real (PostgreSQL/PostGIS) e infraestruturas escaláveis e económicas na nuvem (FastAPI alojado em Render e Neon serverless).
+
+O maior desafio técnico do projeto residiu na **ausência de um feed GTFS oficial por parte do operador local**. A equipa superou este obstáculo ao modelar os dados de raiz de forma manual para as linhas críticas que servem o campus da ESTG/IPLeiria (Linhas 1, 2 e 9). Este esforço permitiu compreender em profundidade a especificação internacional e implementar algoritmos eficientes baseados em geometria matemática.
+
+Por fim, o projeto estabelece uma base sólida para futuras expansões em mobilidade inteligente (como paragens silenciosas via NFC/Bluetooth e bilhética contactless), demonstrando a viabilidade de conceber aplicações com qualidade profissional assentes em filosofias de código aberto e foco estrito na privacidade dos passageiros de Leiria.
