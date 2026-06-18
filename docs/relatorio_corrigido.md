@@ -525,6 +525,61 @@ erDiagram
     TRIPS ||--o{ FREQUENCIES : repeats
 ```
 
+#### 7.4. Modelação Matemática e Algorítmica
+
+Para fundamentar as decisões de navegação e as estimativas temporais apresentadas ao utilizador, o ecossistema recorre a modelações matemáticas aplicadas tanto na API backend como na aplicação móvel.
+
+##### 1. Distância Geodésica: A Fórmula de Haversine
+Para calcular a distância linear real em metros entre duas coordenadas geográficas $(\text{Latitude, Longitude})$ à superfície da Terra, o sistema recorre à **Fórmula de Haversine**. Esta aproximação modela a Terra como uma esfera de raio médio $R = 6\,371\,000\text{ metros}$.
+
+Dadas duas coordenadas $(\phi_1, \lambda_1)$ e $(\phi_2, \lambda_2)$ em radianos:
+$$\Delta\phi = \phi_2 - \phi_1$$
+$$\Delta\lambda = \lambda_2 - \lambda_1$$
+
+O cálculo do coeficiente angular $a$ (a semi-corda do arco do grande círculo) é dado por:
+$$a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1) \cdot \cos(\phi_2) \cdot \sin^2\left(\frac{\Delta\lambda}{2}\right)$$
+
+A distância angular central $c$ em radianos é calculada como:
+$$c = 2 \cdot \operatorname{arctan2}\left(\sqrt{a}, \sqrt{1 - a}\right)$$
+
+A distância final $d$ em metros é:
+$$d = R \cdot c$$
+
+Esta fórmula é executada no cliente Flutter através da classe `Distance` para:
+* Determinar se o utilizador está a menos de **$20\text{ metros}$** de uma paragem (margem de tolerância física para marcar a paragem como "passada").
+* Validar deslocamentos superiores a **$30\text{ metros}$** de forma a disparar uma nova query à API backend (mecanismo de *throttling* para poupar bateria e tráfego de rede).
+
+##### 2. Conversão Cinemática de Tempo de Caminhada
+A estimativa do tempo que o utilizador demora a pé até uma paragem baseia-se numa velocidade média padrão de caminhada humana de $v_{\text{walk}} = 4.8\text{ km/h}$.
+Para simplificar a computação reativa no ecrã móvel, esta velocidade é convertida para metros por minuto:
+$$v_{\text{walk}} = \frac{4800\text{ metros}}{60\text{ minutos}} = 80\text{ metros/minuto}$$
+
+Assim, o tempo estimado de caminhada ($T_{\text{walk\_mins}}$) a partir de uma distância $d$ em metros é modelado pela função teto (para evitar estimativas de zero minutos):
+$$T_{\text{walk\_mins}} = \left\lceil \frac{d}{80} \right\rceil$$
+
+##### 3. Função de Custo para Escolha da Rota Ótima
+Ao solicitar um plano de navegação entre duas coordenadas, o backend avalia múltiplas combinações de viagens. A seleção da melhor alternativa é modelada por uma **função de custo** linear simples ($S_{\text{total}}$) em segundos, que o algoritmo tenta minimizar:
+$$\min \left( S_{\text{total}} \right) = T_{\text{espera}} + T_{\text{viagem}} + T_{\text{caminhada}}$$
+
+Onde:
+* $T_{\text{espera}} = T_{\text{partida\_autocarro}} - T_{\text{procura}}$: Segundos que o passageiro espera na paragem de embarque.
+* $T_{\text{viagem}} = T_{\text{desembarque}} - T_{\text{embarque}}$: Segundos que o passageiro passa dentro do autocarro.
+* $T_{\text{caminhada}} = \frac{d_{\text{origem}}}{1.4} + \frac{d_{\text{destino}}}{1.4}$: Segundos que o utilizador passa a caminhar (utilizando uma velocidade padrão mais rigorosa de $1.4\text{ m/s} \approx 5.04\text{ km/h}$).
+
+##### 4. Divisão Euclidiana para Formatação de Horas
+Para manipular horários na API FastAPI, todas as horas são convertidas para objetos `timedelta` do Python, representando os segundos acumulados desde a meia-noite ($00:00:00$).
+O cálculo para reverter estes segundos inteiros ($S$) de volta para uma string formatada em `HH:MM:SS` utiliza o algoritmo da divisão euclidiana (divisão inteira $\lfloor \cdot \rfloor$ e operador módulo $\bmod$):
+$$\text{Horas} = \lfloor \frac{S}{3600} \rfloor$$
+$$\text{Resto}_1 = S \bmod 3600$$
+$$\text{Minutos} = \lfloor \frac{\text{Resto}_1}{60} \rfloor$$
+$$\text{Segundos} = \text{Resto}_1 \bmod 60$$
+
+##### 5. Aritmética de Frequências (Headway)
+Para viagens que operam em regime de frequência (definido na tabela `frequencies` do GTFS), o horário oficial não é estático. O backend calcula as partidas subsequentes aplicando progressões aritméticas.
+Dado um tempo de partida base $T_{\text{base}}$ e um intervalo entre autocarros (headway) em segundos $H$, a partida de ordem $k$ é dada por:
+$$T_k = T_{\text{base}} + k \cdot H, \quad \text{com } T_k \le T_{\text{fim\_serviço}}$$
+O backend percorre este ciclo incrementando $k$ até encontrar as três próximas partidas válidas superiores ao tempo de pesquisa atual do utilizador.
+
 ---
 
 ## 8. Implementações Futuras
