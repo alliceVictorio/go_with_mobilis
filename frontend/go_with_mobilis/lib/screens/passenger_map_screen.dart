@@ -51,6 +51,8 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
   dynamic _alightingStop;
   List<Polyline> _navPolylines = [];
   String _navWaitTime = "";
+  DateTime? _targetArrivalTime;
+  Timer? _waitDecrTimer;
   Map<String, dynamic>? _routePlanData;
   List<dynamic>? _routeOptions;
   bool _isRouteExpanded = false;
@@ -243,6 +245,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     _originController.dispose();
     _searchFocusNode.dispose();
     _originFocusNode.dispose();
+    _stopWaitTimeTimer();
     super.dispose();
   }
   
@@ -341,6 +344,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
           _passedStopIds.add(stopId);
         });
 
+        if (_boardingStop != null && stopId == _boardingStop['id'].toString()) {
+          _stopWaitTimeTimer();
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -349,7 +356,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '${t('passed_stop_msg')}: ${stop['name']}',
+                    '${stop['name']}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -391,8 +398,34 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
   }
 
+  void _startWaitTimeTimer() {
+    _stopWaitTimeTimer();
+    _updateWaitTimeText();
+    _waitDecrTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
+      _updateWaitTimeText();
+    });
+  }
+
+  void _stopWaitTimeTimer() {
+    _waitDecrTimer?.cancel();
+    _waitDecrTimer = null;
+  }
+
+  void _updateWaitTimeText() {
+    if (_targetArrivalTime == null) return;
+    final now = DateTime.now();
+    int diffMins = _targetArrivalTime!.difference(now).inMinutes;
+    if (diffMins < 0) diffMins = 0;
+    if (mounted) {
+      setState(() {
+        _navWaitTime = "Próximo autocarro em $diffMins min";
+      });
+    }
+  }
+
   void _finishNavigation() {
     if (!mounted) return;
+    _stopWaitTimeTimer();
     setState(() {
       _isNavigating = false;
       _isTripStarted = false;
@@ -403,6 +436,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
       _alightingStop = null;
       _navPolylines.clear();
       _navWaitTime = "";
+      _targetArrivalTime = null;
       _searchController.clear();
       _originController.text = "A minha localização";
       _isSearchExpanded = false;
@@ -497,6 +531,9 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     final arrDate = DateTime(now.year, now.month, now.day, int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
     int diffMins = arrDate.difference(now).inMinutes;
     if (diffMins < 0) diffMins = 0; 
+
+    _targetArrivalTime = arrDate;
+    _startWaitTimeTimer();
 
     setState(() {
       _isTripStarted = false;
@@ -1374,6 +1411,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
     }
 
     final bool isWide = MediaQuery.of(context).size.width > 768;
+    final bool boarded = _boardingStop != null && _passedStopIds.contains(_boardingStop['id'].toString());
 
     return Scaffold(
       key: _scaffoldKey,
@@ -2165,6 +2203,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                       IconButton(
                                         icon: const Icon(Icons.close, color: Colors.grey),
                                         onPressed: () {
+                                          _stopWaitTimeTimer();
                                           setState(() {
                                             _isNavigating = false;
                                             _isTripStarted = false;
@@ -2182,6 +2221,10 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                             _searchedPlaceLocation = null;
                                             _searchedPlaceName = null;
                                             _closestStopsToSearchedPlace = [];
+                                            _boardingStop = null;
+                                            _alightingStop = null;
+                                            _targetArrivalTime = null;
+                                            _navWaitTime = "";
                                           });
                                           if (_currentLocation != null) {
                                             _fetchNearbyStops(_currentLocation!);
@@ -2274,9 +2317,11 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
-                                                    _navWaitTime.replaceAll("Próximo autocarro em ", ""),
+                                                    boarded
+                                                        ? "Em viagem"
+                                                        : _navWaitTime.replaceAll("Próximo autocarro em ", ""),
                                                     style: TextStyle(
-                                                      fontSize: 32, 
+                                                      fontSize: boarded ? 24 : 32, 
                                                       color: _navPolylines.isNotEmpty ? _navPolylines[0].color : const Color(0xFF156A40), 
                                                       fontWeight: FontWeight.w900, 
                                                       letterSpacing: -0.5
@@ -2284,7 +2329,15 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                                   ),
                                                   Row(
                                                     children: [
-                                                      const Text("Tempo de espera", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                                      Expanded(
+                                                        child: Text(
+                                                          boarded
+                                                              ? "A caminho de: ${_alightingStop?['name'] ?? 'Destino'}"
+                                                              : "Tempo de espera",
+                                                          style: const TextStyle(color: Colors.grey, fontSize: 13),
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ),
                                                       if (!isWide) ...[
                                                         const SizedBox(width: 8),
                                                         Icon(
@@ -2399,6 +2452,7 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                         width: double.infinity,
                                         child: ElevatedButton(
                                           onPressed: () {
+                                            _stopWaitTimeTimer();
                                             setState(() {
                                               _isNavigating = false;
                                               _isTripStarted = false;
@@ -2416,7 +2470,14 @@ class _PassengerMapScreenState extends State<PassengerMapScreen> {
                                               _searchedPlaceLocation = null;
                                               _searchedPlaceName = null;
                                               _closestStopsToSearchedPlace = [];
+                                              _boardingStop = null;
+                                              _alightingStop = null;
+                                              _targetArrivalTime = null;
+                                              _navWaitTime = "";
                                             });
+                                            if (_currentLocation != null) {
+                                              _fetchNearbyStops(_currentLocation!);
+                                            }
                                           },
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: Theme.of(context).brightness == Brightness.dark ? Colors.grey.shade800 : Colors.grey.shade200, 
