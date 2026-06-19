@@ -13,6 +13,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth <= 800;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -28,25 +31,44 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           )
         ],
       ),
+      bottomNavigationBar: isMobile
+          ? BottomNavigationBar(
+              currentIndex: _selectedIndex,
+              onTap: (int index) {
+                setState(() { _selectedIndex = index; });
+              },
+              selectedItemColor: const Color(0xFF0054A6),
+              unselectedItemColor: Colors.grey,
+              type: BottomNavigationBarType.fixed,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Visão Geral'),
+                BottomNavigationBarItem(icon: Icon(Icons.route), label: 'Linhas'),
+                BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Utilizadores'),
+                BottomNavigationBarItem(icon: Icon(Icons.warning), label: 'Alertas'),
+              ],
+            )
+          : null,
       body: Row(
         children: [
-          NavigationRail(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (int index) {
-              setState(() { _selectedIndex = index; });
-            },
-            labelType: NavigationRailLabelType.all,
-            backgroundColor: Colors.white,
-            selectedIconTheme: const IconThemeData(color: Color(0xFF0054A6)),
-            selectedLabelTextStyle: const TextStyle(color: Color(0xFF0054A6), fontWeight: FontWeight.bold),
-            destinations: const [
-              NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Visão Geral')),
-              NavigationRailDestination(icon: Icon(Icons.route), label: Text('Linhas')),
-              NavigationRailDestination(icon: Icon(Icons.people), label: Text('Utilizadores')),
-              NavigationRailDestination(icon: Icon(Icons.warning), label: Text('Alertas')),
-            ],
-          ),
-          const VerticalDivider(thickness: 1, width: 1),
+          if (!isMobile) ...[
+            NavigationRail(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (int index) {
+                setState(() { _selectedIndex = index; });
+              },
+              labelType: NavigationRailLabelType.all,
+              backgroundColor: Colors.white,
+              selectedIconTheme: const IconThemeData(color: Color(0xFF0054A6)),
+              selectedLabelTextStyle: const TextStyle(color: Color(0xFF0054A6), fontWeight: FontWeight.bold),
+              destinations: const [
+                NavigationRailDestination(icon: Icon(Icons.dashboard), label: Text('Visão Geral')),
+                NavigationRailDestination(icon: Icon(Icons.route), label: Text('Linhas')),
+                NavigationRailDestination(icon: Icon(Icons.people), label: Text('Utilizadores')),
+                NavigationRailDestination(icon: Icon(Icons.warning), label: Text('Alertas')),
+              ],
+            ),
+            const VerticalDivider(thickness: 1, width: 1),
+          ],
           Expanded(
             child: _buildBody(),
           ),
@@ -90,20 +112,23 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
     if (mounted) setState(() { _stats = stats; _isLoading = false; });
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(BuildContext context, String title, String value, IconData icon, Color color) {
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth <= 800;
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: EdgeInsets.all(isMobile ? 12.0 : 24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 48, color: color),
-            const SizedBox(height: 16),
-            Text(value, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-            const SizedBox(height: 8),
-            Text(title, style: const TextStyle(fontSize: 16, color: Colors.blueGrey)),
+            Icon(icon, size: isMobile ? 32 : 48, color: color),
+            SizedBox(height: isMobile ? 8 : 16),
+            Text(value, style: TextStyle(fontSize: isMobile ? 24 : 32, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
+            SizedBox(height: isMobile ? 4 : 8),
+            Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 12 : 16, color: Colors.blueGrey)),
           ],
         ),
       ),
@@ -115,24 +140,27 @@ class _AdminDashboardViewState extends State<AdminDashboardView> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_stats == null) return const Center(child: Text('Erro ao carregar estatísticas.'));
 
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final bool isMobile = screenWidth <= 800;
+
     return Padding(
-      padding: const EdgeInsets.all(32.0),
+      padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Visão Geral do Sistema', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF0054A6))),
-          const SizedBox(height: 32),
+          Text('Visão Geral do Sistema', style: TextStyle(fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.bold, color: const Color(0xFF0054A6))),
+          SizedBox(height: isMobile ? 16 : 32),
           Expanded(
             child: GridView.count(
-              crossAxisCount: MediaQuery.of(context).size.width > 800 ? 4 : 2,
-              crossAxisSpacing: 24,
-              mainAxisSpacing: 24,
-              childAspectRatio: 1.2,
+              crossAxisCount: isMobile ? 2 : 4,
+              crossAxisSpacing: isMobile ? 12 : 24,
+              mainAxisSpacing: isMobile ? 12 : 24,
+              childAspectRatio: isMobile ? 0.85 : 1.2,
               children: [
-                _buildStatCard('Utilizadores', _stats!['total_users'].toString(), Icons.people, Colors.blue),
-                _buildStatCard('Paragens', _stats!['total_stops'].toString(), Icons.location_on, Colors.green),
-                _buildStatCard('Linhas', _stats!['total_routes'].toString(), Icons.route, const Color(0xFF0054A6)),
-                _buildStatCard('Alertas Ativos', _stats!['active_alerts'].toString(), Icons.warning, Colors.orange),
+                _buildStatCard(context, 'Utilizadores', _stats!['total_users'].toString(), Icons.people, Colors.blue),
+                _buildStatCard(context, 'Paragens', _stats!['total_stops'].toString(), Icons.location_on, Colors.green),
+                _buildStatCard(context, 'Linhas', _stats!['total_routes'].toString(), Icons.route, const Color(0xFF0054A6)),
+                _buildStatCard(context, 'Alertas Ativos', _stats!['active_alerts'].toString(), Icons.warning, Colors.orange),
               ],
             ),
           ),
