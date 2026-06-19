@@ -51,6 +51,7 @@ def get_admin_users(db: Session = Depends(database.get_db), current_user: models
             "profile_picture": u.profile_picture,
             "is_active": u.is_active,
             "is_admin": u.is_admin,
+            "is_verified": u.is_verified,
             "favorites_count": len(u.favorites)
         }
         result.append(u_dict)

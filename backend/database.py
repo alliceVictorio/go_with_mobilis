@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 # com fallback para o ambiente local do PostgreSQL
 SQLALCHEMY_DATABASE_URL = os.getenv(
     "DATABASE_URL", 
-    "postgresql://postgres:1234@localhost:5432/go_with_mobilis"
+    "postgresql://neondb_owner:npg_vGCJmS0u6NqV@ep-patient-hall-apvf70cs.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require"
 )
 
 # Render/Heroku por vezes usam o prefixo 'postgres://' que o SQLAlchemy >= 1.4 desaprova
